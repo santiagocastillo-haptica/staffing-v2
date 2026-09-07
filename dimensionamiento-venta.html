@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dimensionamiento de Venta · Háptica</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="shared/theme.css" />
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    .upload-card {
+      background: #fff; border-radius: 14px; padding: 24px 28px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07); margin-bottom: 24px;
+    }
+    .upload-card h2 { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+    .upload-card .upload-sub { font-size: 12px; color: #6b7280; margin-bottom: 18px; }
+    .upload-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    input[type="file"] {
+      font-family: inherit; font-size: 13px; border: 1.5px solid #d4dfe2;
+      border-radius: 8px; padding: 8px 12px; background: #fff;
+    }
+    .table-card {
+      background: #fff; border-radius: 12px; padding: 20px 24px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06); overflow-x: auto; margin-bottom: 24px;
+    }
+    .table-card h2 { font-size: 14px; font-weight: 700; margin-bottom: 14px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+    th { text-align: left; font-weight: 600; font-size: 10px; text-transform: uppercase;
+         letter-spacing: 0.4px; color: #5a7a82; padding: 6px 10px; border-bottom: 2px solid #eef2f4; }
+    td { padding: 7px 10px; border-bottom: 1px solid #f0f4f5; color: #1a2e35; }
+    tr:last-child td { border-bottom: none; }
+    .preview-actions { display: flex; gap: 8px; margin-top: 16px; }
+    .row-count { font-size: 12px; color: #6b7280; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>Dimensionamiento de Venta</h1>
+    <div class="subtitle">Carga de horas vendidas por rol para futura asignación</div>
+  </div>
+  <div class="header-right" id="navContainer"></div>
+</div>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-screen">
+    <div class="login-card">
+      <h2>Acceso restringido</h2>
+      <p>Esta vista está disponible solo para roles comerciales y de dirección.</p>
+      <button class="btn-google" id="btnLogin">
+        <svg viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+        Iniciar sesión con Google
+      </button>
+      <div class="access-denied" id="accessDenied"></div>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="content">
+
+    <div class="upload-card">
+      <h2>Cargar reporte de horas vendidas</h2>
+      <div class="upload-sub">Sube el Excel (.xlsx) del reporte comercial. Al confirmar, reemplaza todo el contenido actual.</div>
+      <div class="upload-row">
+        <input type="file" id="fileInput" accept=".xlsx,.xls" />
+      </div>
+    </div>
+
+    <div class="table-card" id="previewCard" style="display:none">
+      <h2>Vista previa</h2>
+      <div class="row-count" id="previewCount"></div>
+      <div id="previewTableWrap"></div>
+      <div class="preview-actions">
+        <button class="btn-primary" id="btnConfirm" onclick="confirmUpload()">Confirmar y reemplazar</button>
+        <button class="btn-secondary" onclick="cancelPreview()">Cancelar</button>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <h2>Datos actualmente cargados</h2>
+      <div id="storedTableWrap"><div class="state-msg"><div class="spinner"></div>Cargando…</div></div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="shared/staffing-utils.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/nav.js"></script>
+<script>
+const VENTA_COLUMNS = [
+  'Código', 'Conocimiento de Equipo Háptica', 'Madurez del Cliente', 'Estado',
+  'Metodología', 'Producto', 'Duración', 'Semana de Inicio (Tentativa)',
+  'Horas Vendidas Host', 'Horas Vendidas Owner', 'Horas Vendidas Doer Estrategia',
+  'Horas Vendidas Doer Legal', 'Horas Vendidas Doer Visual',
+];
+
+let mySession    = null;
+let sheetHeaders = [];   // encabezados reales de la pestaña Dimensionamiento_Venta
+let parsedRows   = [];   // filas parseadas del archivo, pendientes de confirmar
+
+function norm(s) { return String(s || '').trim().toLowerCase(); }
+
+async function loadStoredData() {
+  document.getElementById('storedTableWrap').innerHTML =
+    '<div class="state-msg"><div class="spinner"></div>Cargando…</div>';
+  try {
+    // gapi.client...get() no siempre devuelve una Promise nativa (a veces le falta .catch),
+    // así que usamos await + try/catch en vez de encadenar .then()/.catch() directo.
+    const res = await gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_VENTA
+    });
+    const rows = res.result.values || [];
+    if (!rows.length) {
+      sheetHeaders = [...VENTA_COLUMNS, '_cargado_por', '_cargado_el'];
+      document.getElementById('storedTableWrap').innerHTML =
+        '<div class="state-msg">Todavía no hay datos cargados.</div>';
+      return;
+    }
+    sheetHeaders = rows[0];
+    const dataRows = rows.slice(1);
+    if (!dataRows.length) {
+      document.getElementById('storedTableWrap').innerHTML =
+        '<div class="state-msg">Todavía no hay datos cargados.</div>';
+      return;
+    }
+    renderTable('storedTableWrap', sheetHeaders, dataRows);
+  } catch (err) {
+    console.error(err);
+    document.getElementById('storedTableWrap').innerHTML =
+      `<div class="state-msg">⚠️ Error al cargar datos.<br><small>${err.message}</small></div>`;
+  }
+}
+
+function renderTable(containerId, headerRow, dataRows) {
+  const thead = '<tr>' + headerRow.map(h => `<th>${h}</th>`).join('') + '</tr>';
+  const tbody = dataRows.map(r =>
+    '<tr>' + headerRow.map((_, i) => `<td>${r[i] !== undefined ? r[i] : ''}</td>`).join('') + '</tr>'
+  ).join('');
+  document.getElementById(containerId).innerHTML =
+    `<table><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+}
+
+// ── Parseo del archivo subido ────────────────────────────────────────────
+document.getElementById('fileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    try {
+      const wb = XLSX.read(evt.target.result, { type: 'array' });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+      if (!aoa.length) throw new Error('El archivo está vacío.');
+
+      const fileHeaders = aoa[0].map(h => String(h || ''));
+      const fileColIdx = {};
+      fileHeaders.forEach((h, i) => { fileColIdx[norm(h)] = i; });
+
+      const missing = VENTA_COLUMNS.filter(c => fileColIdx[norm(c)] === undefined);
+      if (missing.length) {
+        throw new Error('Faltan columnas en el archivo: ' + missing.join(', '));
+      }
+
+      parsedRows = aoa.slice(1)
+        .filter(row => row.some(v => String(v).trim() !== ''))
+        .map(row => {
+          const record = {};
+          VENTA_COLUMNS.forEach(c => { record[c] = row[fileColIdx[norm(c)]] ?? ''; });
+          return record;
+        });
+
+      if (!parsedRows.length) throw new Error('No se encontraron filas con datos.');
+
+      showPreview();
+    } catch (err) {
+      console.error(err);
+      showToast('⚠️ ' + err.message, 'error');
+      parsedRows = [];
+    }
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+function showPreview() {
+  document.getElementById('previewCard').style.display = 'block';
+  document.getElementById('previewCount').textContent = `${parsedRows.length} fila(s) detectada(s).`;
+  const dataRows = parsedRows.map(r => VENTA_COLUMNS.map(c => r[c]));
+  renderTable('previewTableWrap', VENTA_COLUMNS, dataRows);
+}
+
+function cancelPreview() {
+  parsedRows = [];
+  document.getElementById('previewCard').style.display = 'none';
+  document.getElementById('fileInput').value = '';
+}
+
+async function confirmUpload() {
+  if (!parsedRows.length) return;
+  document.getElementById('btnConfirm').disabled = true;
+  try {
+    const headerRow = sheetHeaders.length ? sheetHeaders : [...VENTA_COLUMNS, '_cargado_por', '_cargado_el'];
+    const colIdx = {};
+    headerRow.forEach((h, i) => { colIdx[norm(h)] = i; });
+
+    const now = new Date().toISOString();
+    const outRows = parsedRows.map(r => {
+      const out = new Array(headerRow.length).fill('');
+      VENTA_COLUMNS.forEach(c => {
+        const idx = colIdx[norm(c)];
+        if (idx !== undefined) out[idx] = r[c];
+      });
+      if (colIdx['_cargado_por'] !== undefined) out[colIdx['_cargado_por']] = mySession.email;
+      if (colIdx['_cargado_el']  !== undefined) out[colIdx['_cargado_el']]  = now;
+      return out;
+    });
+
+    const lastCol = colToLetter(headerRow.length - 1);
+    await gapi.client.sheets.spreadsheets.values.clear({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID,
+      range: `${SHEET_VENTA}!A2:${lastCol}100000`,
+    });
+    await gapi.client.sheets.spreadsheets.values.update({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID,
+      range: `${SHEET_VENTA}!A2`,
+      valueInputOption: 'RAW',
+      resource: { values: outRows },
+    });
+
+    showToast('✓ Datos reemplazados correctamente', 'success');
+    cancelPreview();
+    loadStoredData();
+  } catch (err) {
+    console.error(err);
+    showToast('⚠️ Error al guardar: ' + err.message, 'error');
+  } finally {
+    document.getElementById('btnConfirm').disabled = false;
+  }
+}
+
+function showToast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = `toast show ${type}`;
+  setTimeout(() => { el.className = 'toast'; }, 4500);
+}
+
+HapticaAuth.init({
+  requiredView: 'dimensionamiento',
+  onReady: (session) => {
+    mySession = session;
+    HapticaNav.render('navContainer', { ...session, currentView: 'dimensionamiento' });
+    loadStoredData();
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,155 @@
+/* Háptica Staffing · tema base compartido */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --teal: #003237;
+  --teal-light: #004a50;
+  --orange: #FA4616;
+  --bg: #f4f6f8;
+  --ink: #1a2e35;
+  --border: #d4dfe2;
+  --muted: #5a7a82;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+/* ── Header ─────────────────────────────────── */
+.header {
+  background: var(--teal);
+  padding: 16px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.header-left h1 { color: #fff; font-size: 18px; font-weight: 700; }
+.header-left .subtitle { color: rgba(255,255,255,0.55); font-size: 12px; margin-top: 2px; }
+.header-right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+
+/* ── Nav (shared/nav.js) ───────────────────────── */
+.hap-nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hap-nav-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 500;
+  text-decoration: none; border: 1px solid rgba(255,255,255,0.2);
+  padding: 6px 12px; border-radius: 7px; transition: all 0.15s;
+  white-space: nowrap;
+}
+.hap-nav-link:hover { color: #fff; border-color: rgba(255,255,255,0.5); }
+.hap-nav-link.active {
+  color: #fff; background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.4); font-weight: 600;
+}
+.hap-user-chip {
+  display: flex; align-items: center; gap: 7px;
+  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 99px; padding: 4px 12px 4px 4px;
+}
+.hap-user-avatar {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--orange); color: #fff; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.hap-user-info { display: flex; flex-direction: column; line-height: 1.2; }
+.hap-user-name { color: rgba(255,255,255,0.9); font-size: 12px; font-weight: 600; }
+.hap-user-role { color: rgba(255,255,255,0.5); font-size: 10px; }
+.hap-btn-logout {
+  color: rgba(255,255,255,0.6); font-size: 12px; font-weight: 500;
+  background: transparent; border: none; cursor: pointer; padding: 6px 4px;
+  font-family: inherit; transition: color 0.15s;
+}
+.hap-btn-logout:hover { color: #fff; }
+
+/* ── Login screen ────────────────────────────── */
+.login-screen {
+  display: flex; align-items: center; justify-content: center;
+  min-height: calc(100vh - 70px);
+  padding: 24px;
+}
+.login-card {
+  background: #fff; border-radius: 16px; padding: 40px 48px;
+  text-align: center; box-shadow: 0 4px 24px rgba(0,0,0,0.08); max-width: 380px; width: 100%;
+}
+.login-card h2 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+.login-card p { font-size: 13px; color: #6b7280; margin-bottom: 24px; line-height: 1.5; }
+.btn-google {
+  display: inline-flex; align-items: center; gap: 10px;
+  background: #fff; border: 1.5px solid var(--border); border-radius: 8px;
+  padding: 10px 20px; font-family: inherit; font-size: 14px; font-weight: 600;
+  color: var(--ink); cursor: pointer; transition: all 0.15s; width: 100%; justify-content: center;
+}
+.btn-google:hover { border-color: var(--teal); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.btn-google svg { width: 18px; height: 18px; flex-shrink: 0; }
+.access-denied {
+  color: #dc2626; font-size: 13px; margin-top: 16px;
+  background: #fee2e2; border-radius: 8px; padding: 12px 14px; display: none; text-align: left; line-height: 1.4;
+}
+.access-denied a { color: #991b1b; font-weight: 600; }
+
+/* ── Generic content wrapper ─────────────────── */
+#app { display: none; }
+.content { padding: 20px 24px 48px; max-width: 1200px; margin: 0 auto; }
+
+/* ── Buttons ─────────────────────────────────── */
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--teal); color: #fff; border: none; padding: 8px 18px;
+  border-radius: 8px; font-family: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s;
+}
+.btn-primary:hover { background: var(--teal-light); }
+.btn-primary:disabled { background: #9ca3af; cursor: not-allowed; }
+.btn-secondary {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #fff; color: var(--ink); border: 1.5px solid var(--border);
+  padding: 7px 14px; border-radius: 8px; font-family: inherit;
+  font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s;
+}
+.btn-secondary:hover { border-color: var(--teal); color: var(--teal); }
+
+/* ── Filters ─────────────────────────────────── */
+.filters { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: flex-end; }
+.filter-group { display: flex; flex-direction: column; gap: 4px; }
+.filter-group label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--muted);
+}
+.filter-group select, .filter-group input {
+  padding: 8px 32px 8px 12px; border: 1.5px solid var(--border); border-radius: 8px;
+  font-family: inherit; font-size: 13px; font-weight: 500; color: var(--ink);
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%235a7a82' d='M6 8L1 3h10z'/%3E%3C/svg%3E") no-repeat right 10px center;
+  appearance: none; cursor: pointer; transition: border-color 0.15s; min-width: 180px;
+}
+.filter-group input { background-image: none; padding-right: 12px; cursor: text; }
+.filter-group select:focus, .filter-group input:focus { outline: none; border-color: var(--teal); }
+
+/* ── State messages ──────────────────────────── */
+.state-msg { text-align: center; padding: 60px 0; color: var(--muted); font-size: 14px; }
+.state-msg .spinner {
+  width: 30px; height: 30px; border: 3px solid var(--border);
+  border-top-color: var(--teal); border-radius: 50%;
+  animation: spin 0.8s linear infinite; margin: 0 auto 14px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Toast ───────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 24px; right: 24px; background: var(--ink); color: #fff;
+  padding: 11px 18px; border-radius: 10px; font-size: 13px; font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2); transform: translateY(60px); opacity: 0;
+  transition: all 0.3s; z-index: 300;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.success { background: #065f46; }
+.toast.error   { background: #991b1b; }
+
+@media (max-width: 700px) {
+  .header { flex-direction: column; align-items: flex-start; }
+  .filters { flex-direction: column; }
+  .filter-group select, .filter-group input { min-width: 100%; }
+}

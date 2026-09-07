@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Editar Presupuesto · Háptica</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="shared/theme.css" />
+  <style>
+    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    .toolbar-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .changes-badge {
+      font-size: 12px; font-weight: 600; color: #92400e;
+      background: #fef3c7; border: 1px solid #fde68a;
+      padding: 4px 10px; border-radius: 99px; display: none;
+    }
+
+    /* ── Matrix table wrapper ────────────────────── */
+    .matrix-wrap { overflow-x: auto; border-radius: 12px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); }
+    .matrix { border-collapse: collapse; font-size: 12px; background: #fff; min-width: 100%; }
+
+    .matrix .col-name {
+      position: sticky; left: 0; z-index: 2;
+      background: #fff; min-width: 180px; max-width: 200px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .matrix thead .col-name { background: #1a2e35; z-index: 3; }
+
+    .matrix thead tr th { padding: 0; text-align: center; font-weight: 600; white-space: nowrap; }
+    .row-month th {
+      background: #1a2e35; color: rgba(255,255,255,0.7);
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.8px; padding: 7px 4px; border-right: 1px solid #2d4350;
+    }
+    .row-month th.col-name { color: rgba(255,255,255,0.4); font-size: 10px; }
+    .row-dates th {
+      background: #243b44; color: rgba(255,255,255,0.5);
+      font-size: 10px; font-weight: 500; padding: 4px 4px; border-right: 1px solid #2d4350;
+    }
+    .row-weeks th {
+      background: #1a2e35; color: #fff;
+      font-size: 13px; font-weight: 800; padding: 6px 4px;
+      border-right: 1px solid #2d4350; min-width: 52px;
+    }
+    .row-cap th {
+      background: #f0f4f5; color: #5a7a82;
+      font-size: 11px; font-weight: 600; padding: 5px 4px;
+      border-right: 1px solid #e2e8ea; border-bottom: 2px solid #d4dfe2;
+    }
+    .row-cap th.col-name { text-align: left; padding-left: 12px; color: #9ca3af; font-size: 10px; }
+
+    .row-person td {
+      background: #eef6f7; font-weight: 700; font-size: 12px;
+      color: #003237; padding: 7px 4px; border-bottom: 1px solid #d4dfe2; text-align: center;
+    }
+    .row-person td.col-name { text-align: left; padding-left: 12px; font-size: 13px; border-right: 2px solid #003237; }
+    .row-project td {
+      background: #fff; padding: 2px 4px;
+      border-bottom: 1px solid #f0f4f5; border-right: 1px solid #f0f4f5; text-align: center;
+    }
+    .row-project td.col-name {
+      text-align: left; padding-left: 22px; font-size: 12px;
+      color: #374151; font-weight: 500; border-right: 2px solid #003237;
+    }
+    .row-project:hover td { background: #f8fbfc; }
+    .row-project:hover td.col-name { background: #f8fbfc; }
+    .row-add td { background: #fff; padding: 4px; border-bottom: 2px solid #eef2f4; }
+    .row-add td.col-name { border-right: 2px solid #003237; }
+    .btn-add-row {
+      background: none; border: none; cursor: pointer;
+      color: #9ca3af; font-size: 11px; font-weight: 500;
+      padding: 4px 12px; font-family: inherit; transition: color 0.15s;
+    }
+    .btn-add-row:hover { color: #003237; }
+
+    .hrs-input {
+      width: 44px; padding: 4px 2px; border: 1.5px solid transparent;
+      border-radius: 5px; font-family: inherit; font-size: 12px; font-weight: 600;
+      color: #1a2e35; text-align: center; background: transparent; transition: all 0.12s;
+    }
+    .hrs-input:hover { border-color: #d4dfe2; background: #fff; }
+    .hrs-input:focus { outline: none; border-color: #003237; background: #fff; }
+    .hrs-input.changed { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
+    .hrs-input::-webkit-inner-spin-button, .hrs-input::-webkit-outer-spin-button { opacity: 0.4; }
+
+    .pct-cell { font-size: 11px; font-weight: 700; }
+    .pct-low  { color: #059669; }
+    .pct-ok   { color: #003237; }
+    .pct-warn { color: #d97706; }
+    .pct-over { color: #dc2626; background: #fee2e2 !important; border-radius: 4px; padding: 1px 4px; }
+
+    .saving-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,50,55,0.7); z-index: 200;
+      align-items: center; justify-content: center; flex-direction: column; gap: 12px;
+    }
+    .saving-overlay.open { display: flex; }
+    .saving-overlay .spinner {
+      width: 36px; height: 36px; border: 4px solid rgba(255,255,255,0.3);
+      border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    .saving-overlay p { color: #fff; font-size: 14px; font-weight: 600; }
+
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.4); z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #fff; border-radius: 14px; padding: 26px 30px;
+      width: 380px; max-width: 95vw; box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+    }
+    .modal h3 { font-size: 15px; font-weight: 700; margin-bottom: 18px; }
+    .modal-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+    .modal-field label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #5a7a82; }
+    .modal-field input {
+      padding: 8px 11px; border: 1.5px solid #d4dfe2; border-radius: 7px;
+      font-family: inherit; font-size: 13px; font-weight: 500; color: #1a2e35; background: #fff;
+    }
+    .modal-field input:focus { outline: none; border-color: #003237; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+    .modal-field select {
+      padding: 8px 11px; border: 1.5px solid #d4dfe2; border-radius: 7px;
+      font-family: inherit; font-size: 13px; font-weight: 500; color: #1a2e35; background: #fff;
+    }
+    .modal-field select:focus { outline: none; border-color: #003237; }
+    .modal-lg { width: 660px; max-width: 95vw; max-height: 88vh; overflow-y: auto; }
+    .pm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin-bottom: 4px; }
+    .pm-hours-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 16px; margin: 14px 0; }
+    .pm-section-label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+      color: #003237; margin: 18px 0 8px; padding-top: 12px; border-top: 1px solid #eef2f4;
+    }
+    .pm-role-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f0f4f5; }
+    .pm-role-row label { font-size: 12px; font-weight: 700; color: #003237; min-width: 170px; }
+    .pm-role-row select { flex: 1; padding: 6px 10px; border: 1.5px solid #d4dfe2; border-radius: 6px; font-size: 12px; font-family: inherit; }
+    .pm-no-candidates { font-size: 12px; color: #dc2626; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>Editar Presupuesto</h1>
+    <div class="subtitle">Asignación manual de horas presupuestadas por proyecto y haptiqueño</div>
+  </div>
+  <div class="header-right" id="navContainer"></div>
+</div>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-screen">
+    <div class="login-card">
+      <h2>Acceso restringido</h2>
+      <p>Esta herramienta está disponible solo para el equipo de dirección de Háptica.</p>
+      <button class="btn-google" id="btnLogin">
+        <svg viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+        Iniciar sesión con Google
+      </button>
+      <div class="access-denied" id="accessDenied"></div>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="content">
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <div class="update-notice" id="updateNotice">Cargando datos…</div>
+        <span class="changes-badge" id="changesBadge"></span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-secondary" id="btnToggleFinished" onclick="toggleHideFinished()">👁 Ocultar finalizados</button>
+        <button class="btn-primary" onclick="openProjectModal()">🚀 Nuevo proyecto</button>
+        <button class="btn-secondary" id="btnDiscard" onclick="discardChanges()" style="display:none">Descartar</button>
+        <button class="btn-primary" id="btnSave" onclick="saveChanges()" disabled>💾 Guardar cambios</button>
+      </div>
+    </div>
+    <div id="matrixContainer">
+      <div class="state-msg"><div class="spinner"></div>Cargando…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal nueva fila -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3>Agregar proyecto a <span id="modalPersonName"></span></h3>
+    <div class="modal-field">
+      <label>Proyecto</label>
+      <input type="text" id="modalProyecto" placeholder="Ej: TELMEX-02" autocomplete="off" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn-primary" onclick="confirmNewRow()">Agregar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal proyecto nuevo (venta) con sugerencia de equipo -->
+<div class="modal-overlay" id="projectModalOverlay">
+  <div class="modal modal-lg">
+    <h3>Agregar proyecto nuevo</h3>
+    <div class="pm-grid">
+      <div class="modal-field"><label>Cliente</label><input type="text" id="pmCliente" autocomplete="off" /></div>
+      <div class="modal-field"><label>Código</label><input type="text" id="pmCodigo" placeholder="Ej: TELMEX-02" autocomplete="off" /></div>
+      <div class="modal-field"><label>Conocimiento de Equipo Háptica</label><input type="text" id="pmConocimiento" autocomplete="off" /></div>
+      <div class="modal-field"><label>Madurez del Cliente</label><input type="text" id="pmMadurez" autocomplete="off" /></div>
+      <div class="modal-field"><label>Estado</label><input type="text" id="pmEstado" autocomplete="off" /></div>
+      <div class="modal-field"><label>Metodología</label><select id="pmMetodologia"></select></div>
+      <div class="modal-field"><label>Producto</label><input type="text" id="pmProducto" autocomplete="off" /></div>
+      <div class="modal-field"><label>Industria</label><select id="pmIndustria"></select></div>
+      <div class="modal-field"><label>Duración (semanas)</label><input type="number" id="pmDuracion" min="1" step="1" value="1" /></div>
+      <div class="modal-field"><label>Semana de inicio</label><select id="pmSemanaInicio"></select></div>
+    </div>
+
+    <div class="pm-section-label">Horas vendidas por rol</div>
+    <div class="pm-hours-grid">
+      <div class="modal-field"><label>Horas Host</label><input type="number" id="pmHorasHost" min="0" step="0.5" value="0" /></div>
+      <div class="modal-field"><label>Horas Owner</label><input type="number" id="pmHorasOwner" min="0" step="0.5" value="0" /></div>
+      <div class="modal-field"><label>Horas Doer Estrategia</label><input type="number" id="pmHorasDoerEstrategia" min="0" step="0.5" value="0" /></div>
+      <div class="modal-field"><label>Horas Doer Legal</label><input type="number" id="pmHorasDoerLegal" min="0" step="0.5" value="0" /></div>
+      <div class="modal-field"><label>Horas Doer Visual</label><input type="number" id="pmHorasDoerVisual" min="0" step="0.5" value="0" /></div>
+    </div>
+
+    <div class="modal-actions" style="justify-content:space-between">
+      <button class="btn-secondary" onclick="closeProjectModal()">Cancelar</button>
+      <button class="btn-primary" id="btnSuggestTeam" onclick="suggestTeam(event)">Sugerir equipo →</button>
+    </div>
+
+    <div id="pmSuggestions" style="display:none">
+      <div class="pm-section-label">Sugerencia de equipo (según disponibilidad y preferencia)</div>
+      <div id="pmSuggestionsList"></div>
+      <div class="modal-actions">
+        <button class="btn-primary" onclick="confirmProjectAssignment()">✓ Agregar al presupuesto</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="saving-overlay" id="savingOverlay"><div class="spinner"></div><p>Guardando…</p></div>
+<div class="toast" id="toast"></div>
+
+<script src="shared/staffing-utils.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/nav.js"></script>
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+let sheetRows   = [];   // raw rows from sheet
+let headers     = [];
+let colIdx      = {};
+let hasAnioCol  = false;
+let configMap   = {};   // semana-año (o solo semana si Config_Cargabilidad aún no tiene año) → { festivos, tardes_libres }
+// matrix[colaborador][proyecto][semanaAnioKey] = { hours, rowIndex (1-based, null si es nuevo) }
+let matrix      = {};
+let dirtyMatrix = {}; // misma forma, solo celdas modificadas: { hours, rowIndex, isNew, semana, año }
+let modalPerson = null;
+let weekRange   = [];  // lista fija de semanas a mostrar: [{ semana, año, key, monday }]
+let hideFinished = false;
+
+// ── Load data ─────────────────────────────────────────────────────────────
+async function loadData() {
+  document.getElementById('matrixContainer').innerHTML =
+    '<div class="state-msg"><div class="spinner"></div>Cargando datos…</div>';
+  try {
+    let cfgRes = { result: { values: [] } };
+    try {
+      cfgRes = await Promise.resolve(gapi.client.sheets.spreadsheets.values.get({
+        spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_CONFIG
+      }));
+    } catch(e) { /* Config tab optional */ }
+
+    const dataRes = await Promise.resolve(gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_DATA
+    }));
+
+    // Parse config — se guarda con clave semana+año y, de respaldo, solo semana
+    // (por si Config_Cargabilidad todavía no tiene columna Año).
+    configMap = {};
+    const cfgRows = cfgRes.result.values || [];
+    if (cfgRows.length > 1) {
+      const cfgH = cfgRows[0].map(h => h.trim().toLowerCase());
+      const iAnio = cfgH.indexOf('año');
+      cfgRows.slice(1).forEach(r => {
+        const sem = Number(r[cfgH.indexOf('semana')]);
+        if (!sem) return;
+        const cfg = {
+          festivos:      Number(r[cfgH.indexOf('festivos')])      || 0,
+          tardes_libres: Number(r[cfgH.indexOf('tardes_libres')]) || 0,
+        };
+        configMap[sem] = cfg;
+        if (iAnio >= 0) {
+          const anio = Number(r[iAnio]) || inferAnioLegacy(sem);
+          configMap[semanaAnioKey(sem, anio)] = cfg;
+        }
+      });
+    }
+
+    // Parse data
+    const rows = dataRes.result.values || [];
+    if (!rows.length) throw new Error('Sheet vacío');
+    headers = rows[0].map(h => h.trim().toLowerCase());
+    colIdx = {};
+    headers.forEach((h, i) => { colIdx[h] = i; });
+    hasAnioCol = colIdx['año'] !== undefined;
+
+    sheetRows = rows.slice(1).map((r, i) => {
+      const obj = { _row: i + 2 };
+      headers.forEach((h, j) => { obj[h] = r[j] ?? ''; });
+      obj.colaborador = normalizaColaborador(obj.colaborador);
+      obj.semana = Number(obj.semana) || null;
+      obj.año = Number(obj.año) || (obj.semana ? inferAnioLegacy(obj.semana) : null);
+      obj.horaspresupuestadas = Number(obj.horaspresupuestadas) || 0;
+      return obj;
+    }).filter(r => r.semana && r.colaborador);
+
+    buildMatrix();
+    buildWeekRange();
+    dirtyMatrix = {};
+    renderMatrix();
+    updateTimestamp();
+
+  } catch(err) {
+    console.error(err);
+    document.getElementById('matrixContainer').innerHTML =
+      `<div class="state-msg">⚠️ Error al cargar datos.<br><small>${err.message}</small></div>`;
+  }
+}
+
+function buildMatrix() {
+  matrix = {};
+  sheetRows.forEach(r => {
+    const col  = r.colaborador;
+    const proy = r.proyecto || '—';
+    const key  = semanaAnioKey(r.semana, r.año);
+    if (!matrix[col]) matrix[col] = {};
+    if (!matrix[col][proy]) matrix[col][proy] = {};
+    matrix[col][proy][key] = { hours: r.horaspresupuestadas, rowIndex: r._row };
+  });
+}
+
+function buildWeekRange() {
+  weekRange = getFullWeekRange();
+}
+
+// Config_Cargabilidad puede no tener año todavía — usa la clave compuesta si existe,
+// si no cae de vuelta a la clave por semana sola.
+function cfgKeyFor(w) {
+  return configMap[w.key] !== undefined ? w.key : String(w.semana);
+}
+
+// ── Render matrix ─────────────────────────────────────────────────────────
+// No resetea dirtyMatrix — así se puede re-renderizar (toggle de "ocultar
+// finalizados", agregar proyecto) sin perder ediciones sin guardar. El reset
+// explícito de dirtyMatrix pasa en loadData() (carga fresca) y discardChanges().
+function renderMatrix() {
+  updateDirtyUI();
+
+  const monthGroups = [];
+  weekRange.forEach(w => {
+    const { month, year } = weekMonthYear(w.semana, w.año);
+    const gkey = `${year}-${month}`;
+    if (!monthGroups.length || monthGroups[monthGroups.length-1].gkey !== gkey) {
+      monthGroups.push({ gkey, label: MONTHS_ES[month], count: 1 });
+    } else {
+      monthGroups[monthGroups.length-1].count++;
+    }
+  });
+
+  const cur = getCurrentIsoYearWeek();
+  const isCurWeek = w => w.semana === cur.semana && w.año === cur.año;
+  const curKey = semanaAnioKey(cur.semana, cur.año);
+
+  // ── THEAD ──
+  let thead = '<thead>';
+  thead += '<tr class="row-month"><th class="col-name"></th>';
+  monthGroups.forEach(g => { thead += `<th colspan="${g.count}">${g.label}</th>`; });
+  thead += '</tr>';
+
+  thead += '<tr class="row-dates"><th class="col-name"></th>';
+  weekRange.forEach(w => { thead += `<th>${weekDateLabel(w.semana, w.año)}</th>`; });
+  thead += '</tr>';
+
+  thead += '<tr class="row-weeks"><th class="col-name"></th>';
+  weekRange.forEach(w => {
+    thead += `<th style="${isCurWeek(w) ? 'background:#FA4616;color:#fff' : ''}">${w.semana}<br><span style="font-size:9px;font-weight:600;opacity:.7">${w.año}</span></th>`;
+  });
+  thead += '</tr>';
+
+  thead += '<tr class="row-cap"><th class="col-name">Capacidad equipo</th>';
+  weekRange.forEach(w => {
+    const pct = capPct(cfgKeyFor(w), configMap);
+    thead += `<th><span class="pct-cell ${pctClass(pct)}">${fmtPct(pct)}</span></th>`;
+  });
+  thead += '</tr>';
+  thead += '</thead>';
+
+  // ── TBODY ──
+  let colaboradores = Object.keys(matrix).sort();
+  let tbody = '<tbody>';
+
+  colaboradores.forEach(col => {
+    let proyectos = sortProjects(Object.keys(matrix[col]));
+    if (hideFinished) {
+      proyectos = proyectos.filter(proy => {
+        const cell = matrix[col][proy][curKey];
+        return cell && cell.hours > 0;
+      });
+      if (!proyectos.length) return; // nadie que mostrar de esta persona
+    }
+
+    tbody += `<tr class="row-person">`;
+    tbody += `<td class="col-name">${col}</td>`;
+    weekRange.forEach(w => {
+      const totalHrs = Object.values(matrix[col]).reduce((sum, proy) => {
+        const cell = (dirtyMatrix[col] && dirtyMatrix[col][proy] && dirtyMatrix[col][proy][w.key] !== undefined)
+          ? dirtyMatrix[col][proy][w.key].hours
+          : (matrix[col][proy] && matrix[col][proy][w.key] ? matrix[col][proy][w.key].hours : 0);
+        return sum + cell;
+      }, 0);
+      const cap = 40 * capPct(cfgKeyFor(w), configMap);
+      const pct = cap > 0 ? totalHrs / cap : (totalHrs > 0 ? 1 : null);
+      tbody += `<td style="${isCurWeek(w) ? 'background:#fff3ee' : ''}">
+        ${totalHrs > 0 ? `<span class="pct-cell ${pctClass(pct)}">${fmtPct(pct)}</span>` : ''}
+      </td>`;
+    });
+    tbody += '</tr>';
+
+    proyectos.forEach(proy => {
+      tbody += `<tr class="row-project" data-col="${escAttr(col)}" data-proy="${escAttr(proy)}">`;
+      tbody += `<td class="col-name">${proy}</td>`;
+      weekRange.forEach(w => {
+        const existing = matrix[col][proy][w.key];
+        const dirty    = dirtyMatrix[col] && dirtyMatrix[col][proy] && dirtyMatrix[col][proy][w.key] !== undefined;
+        const val      = dirty ? dirtyMatrix[col][proy][w.key].hours : (existing ? existing.hours : 0);
+        const changed  = dirty ? 'changed' : '';
+        tbody += `<td style="${isCurWeek(w) ? 'background:#fffaf8' : ''}">
+          <input class="hrs-input ${changed}" type="number" min="0" step="0.5"
+            value="${val || ''}" placeholder=""
+            data-col="${escAttr(col)}" data-proy="${escAttr(proy)}" data-week="${w.key}" data-semana="${w.semana}" data-anio="${w.año}"
+            data-rowindex="${existing ? existing.rowIndex : ''}"
+            onchange="onCellChange(this)" />
+        </td>`;
+      });
+      tbody += '</tr>';
+    });
+
+    tbody += `<tr class="row-add">
+      <td class="col-name">
+        <button class="btn-add-row" onclick="openModal('${escAttr(col)}')">＋ agregar proyecto</button>
+      </td>
+      ${weekRange.map(() => '<td></td>').join('')}
+    </tr>`;
+  });
+
+  tbody += '</tbody>';
+
+  document.getElementById('matrixContainer').innerHTML = `
+    <div class="matrix-wrap">
+      <table class="matrix">${thead}${tbody}</table>
+    </div>`;
+}
+
+// ── Cell change ───────────────────────────────────────────────────────────
+function onCellChange(input) {
+  const col    = input.dataset.col;
+  const proy   = input.dataset.proy;
+  const key    = input.dataset.week;
+  const semana = Number(input.dataset.semana);
+  const año    = Number(input.dataset.anio);
+  const rowI   = input.dataset.rowindex ? Number(input.dataset.rowindex) : null;
+  const newV   = Number(input.value) || 0;
+  const orig   = matrix[col] && matrix[col][proy] && matrix[col][proy][key]
+    ? matrix[col][proy][key].hours : 0;
+
+  if (!dirtyMatrix[col]) dirtyMatrix[col] = {};
+  if (!dirtyMatrix[col][proy]) dirtyMatrix[col][proy] = {};
+
+  if (newV === orig) {
+    delete dirtyMatrix[col][proy][key];
+    input.classList.remove('changed');
+  } else {
+    dirtyMatrix[col][proy][key] = { hours: newV, rowIndex: rowI, isNew: !rowI, semana, año };
+    input.classList.add('changed');
+  }
+
+  refreshPersonRow(col);
+  updateDirtyUI();
+}
+
+function refreshPersonRow(col) {
+  const rows = document.querySelectorAll(`.row-project[data-col="${escAttr(col)}"]`);
+  const inputs = [];
+  rows.forEach(r => r.querySelectorAll('.hrs-input').forEach(i => inputs.push(i)));
+
+  const byWeek = {};
+  inputs.forEach(inp => {
+    const key = inp.dataset.week;
+    byWeek[key] = (byWeek[key] || 0) + (Number(inp.value) || 0);
+  });
+
+  const personRows = document.querySelectorAll('.row-person');
+  personRows.forEach(pr => {
+    const nameCell = pr.querySelector('.col-name');
+    if (!nameCell || nameCell.textContent.trim() !== col) return;
+    const cells = pr.querySelectorAll('td:not(.col-name)');
+    cells.forEach((cell, i) => {
+      const w   = weekRange[i];
+      const hrs = byWeek[w.key] || 0;
+      const cap = 40 * capPct(cfgKeyFor(w), configMap);
+      const pct = cap > 0 ? hrs / cap : (hrs > 0 ? 1 : null);
+      cell.innerHTML = hrs > 0 ? `<span class="pct-cell ${pctClass(pct)}">${fmtPct(pct)}</span>` : '';
+    });
+  });
+}
+
+function toggleHideFinished() {
+  hideFinished = !hideFinished;
+  const btn = document.getElementById('btnToggleFinished');
+  btn.textContent = hideFinished ? '👁 Mostrar todos' : '👁 Ocultar finalizados';
+  btn.classList.toggle('btn-primary', hideFinished);
+  btn.classList.toggle('btn-secondary', !hideFinished);
+  renderMatrix();
+}
+
+function updateDirtyUI() {
+  let count = 0;
+  Object.values(dirtyMatrix).forEach(p =>
+    Object.values(p).forEach(w => count += Object.keys(w).length)
+  );
+  const badge = document.getElementById('changesBadge');
+  badge.textContent = `${count} cambio${count !== 1 ? 's' : ''} sin guardar`;
+  badge.style.display = count > 0 ? 'inline-block' : 'none';
+  document.getElementById('btnSave').disabled    = count === 0;
+  document.getElementById('btnDiscard').style.display = count > 0 ? 'inline-flex' : 'none';
+}
+
+function discardChanges() {
+  dirtyMatrix = {};
+  renderMatrix();
+}
+
+// ── Save ──────────────────────────────────────────────────────────────────
+async function saveChanges() {
+  const updateData = [];
+  const newRows    = [];
+  const now        = new Date().toISOString();
+  const presCol    = colIdx['horaspresupuestadas'] ?? colIdx['horas_presupuestadas'];
+  const tsColI     = Object.keys(colIdx).findIndex(k => k.includes('actualizacion') || k.includes('update'));
+
+  Object.entries(dirtyMatrix).forEach(([col, proyMap]) => {
+    Object.entries(proyMap).forEach(([proy, weekMap]) => {
+      Object.entries(weekMap).forEach(([key, cell]) => {
+        if (cell.isNew || !cell.rowIndex) {
+          newRows.push({ semana: cell.semana, año: cell.año, colaborador: col, proyecto: proy, horas: cell.hours });
+        } else {
+          const presLetter = colToLetter(presCol);
+          updateData.push({ range: `${SHEET_DATA}!${presLetter}${cell.rowIndex}`, values: [[cell.hours]] });
+          if (tsColI >= 0) {
+            updateData.push({ range: `${SHEET_DATA}!${colToLetter(tsColI)}${cell.rowIndex}`, values: [[now]] });
+          }
+        }
+      });
+    });
+  });
+
+  document.getElementById('savingOverlay').classList.add('open');
+  try {
+    if (updateData.length) {
+      await gapi.client.sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: HapticaAuth.SPREADSHEET_ID,
+        resource: { valueInputOption: 'RAW', data: updateData },
+      });
+    }
+    if (newRows.length) {
+      const appendData = newRows.map(r => {
+        const row = new Array(headers.length).fill('');
+        row[colIdx['semana']] = r.semana;
+        if (hasAnioCol) row[colIdx['año']] = r.año;
+        row[colIdx['colaborador']] = r.colaborador;
+        row[colIdx['proyecto']] = r.proyecto;
+        if (presCol !== undefined) row[presCol] = r.horas;
+        if (tsColI >= 0) row[tsColI] = now;
+        return row;
+      });
+      await gapi.client.sheets.spreadsheets.values.append({
+        spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: `${SHEET_DATA}!A1`,
+        valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS',
+        resource: { values: appendData },
+      });
+    }
+    document.getElementById('savingOverlay').classList.remove('open');
+    showToast('✓ Guardado correctamente', 'success');
+    await loadData();
+  } catch(err) {
+    console.error(err);
+    document.getElementById('savingOverlay').classList.remove('open');
+    showToast('⚠️ Error al guardar: ' + err.message, 'error');
+  }
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────
+function openModal(col) {
+  modalPerson = col;
+  document.getElementById('modalPersonName').textContent = col;
+  document.getElementById('modalProyecto').value = '';
+  document.getElementById('modalOverlay').classList.add('open');
+}
+function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+function confirmNewRow() {
+  const proy = document.getElementById('modalProyecto').value.trim();
+  if (!proy) { alert('Ingresa un nombre de proyecto.'); return; }
+  if (matrix[modalPerson] && matrix[modalPerson][proy]) {
+    alert(`${modalPerson} ya tiene el proyecto ${proy}.`); return;
+  }
+  if (!matrix[modalPerson]) matrix[modalPerson] = {};
+  matrix[modalPerson][proy] = {};
+  closeModal();
+  renderMatrix();
+}
+
+// ── Nuevo proyecto (venta) con sugerencia de equipo ─────────────────────────
+const ROLE_FIELD_IDS = {
+  'Host':            'pmHorasHost',
+  'Owner':           'pmHorasOwner',
+  'Doer Estrategia': 'pmHorasDoerEstrategia',
+  'Doer Legal':      'pmHorasDoerLegal',
+  'Doer Visual':     'pmHorasDoerVisual',
+};
+
+let rolesExtended    = []; // [{ persona, rolInterno, roles:[..], metodologias:[..], industrias:[..] }]
+let pendingAssignments = null; // { [rol]: { persona, horasPerWeek, weeks } | null }
+let pmMeta = null;
+
+async function fetchRolesExtended() {
+  const res = await gapi.client.sheets.spreadsheets.values.get({
+    spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_ROLES,
+  });
+  const rows = res.result.values || [];
+  if (rows.length < 2) return [];
+  const h = rows[0].map(x => x.trim().toLowerCase());
+  const iPersona = h.indexOf('persona');
+  const iRol     = h.indexOf('rol');
+  const roleCols      = ['rol háptica 1', 'rol háptica 2', 'rol háptica 3'].map(c => h.indexOf(c));
+  const metodologiaCols = ['enfoque 1', 'enfoque 2', 'enfoque 3'].map(c => h.indexOf(c));
+  const industriaCols = ['industria 1', 'industria 2', 'industria 3', 'industria 4', 'industria 5'].map(c => h.indexOf(c));
+
+  return rows.slice(1).map(r => ({
+    persona: normalizaColaborador((r[iPersona] || '').trim()),
+    rolInterno: iRol >= 0 ? (r[iRol] || '').trim() : '',
+    roles: roleCols.map(i => (i >= 0 ? (r[i] || '').trim() : '')).filter(Boolean),
+    metodologias: metodologiaCols.map(i => (i >= 0 ? (r[i] || '').trim() : '')).filter(Boolean),
+    industrias: industriaCols.map(i => (i >= 0 ? (r[i] || '').trim() : '')).filter(Boolean),
+  })).filter(p => p.persona);
+}
+
+// Horas ya comprometidas de una persona en una semana (incluye ediciones sin guardar)
+function personLoadAtWeek(persona, weekKey) {
+  const proyMap = matrix[persona];
+  if (!proyMap) return 0;
+  let total = 0;
+  Object.keys(proyMap).forEach(proy => {
+    const dirtyCell = dirtyMatrix[persona] && dirtyMatrix[persona][proy] && dirtyMatrix[persona][proy][weekKey];
+    if (dirtyCell !== undefined) { total += dirtyCell.hours; return; }
+    const cell = proyMap[proy][weekKey];
+    if (cell) total += cell.hours;
+  });
+  return total;
+}
+
+// Filtra por capacidad de rol + disponibilidad real en TODAS las semanas del proyecto,
+// y ordena por preferencia: rol > metodología > industria (confirmado con Santiago).
+function suggestForRole(role, projectWeeks, horasTotal, metodologia, industria) {
+  const horasPerWeek = horasTotal / projectWeeks.length;
+  return rolesExtended
+    .filter(p => p.roles.includes(role))
+    .map(p => {
+      const roleRank = p.roles.indexOf(role);
+      const metRank  = metodologia ? p.metodologias.indexOf(metodologia) : -1;
+      const indRank  = industria ? p.industrias.indexOf(industria) : -1;
+      const fits = projectWeeks.every(w => {
+        const cap = 40 * capPct(cfgKeyFor(w), configMap);
+        return personLoadAtWeek(p.persona, w.key) + horasPerWeek <= cap + 0.001;
+      });
+      return { persona: p.persona, roleRank, metRank: metRank === -1 ? 99 : metRank, indRank: indRank === -1 ? 99 : indRank, fits };
+    })
+    .filter(c => c.fits)
+    .sort((a, b) => a.roleRank - b.roleRank || a.metRank - b.metRank || a.indRank - b.indRank);
+}
+
+function populateProjectFormStatics() {
+  document.getElementById('pmMetodologia').innerHTML =
+    '<option value="">—</option>' + METODOLOGIAS.map(m => `<option value="${escAttr(m)}">${m}</option>`).join('');
+  document.getElementById('pmIndustria').innerHTML =
+    '<option value="">—</option>' + INDUSTRIAS.map(i => `<option value="${escAttr(i)}">${i}</option>`).join('');
+
+  const cur = getCurrentIsoYearWeek();
+  const sel = document.getElementById('pmSemanaInicio');
+  sel.innerHTML = weekRange.map(w => {
+    const isCur = w.semana === cur.semana && w.año === cur.año;
+    return `<option value="${w.key}">${semanaAnioLabel(w.semana, w.año)}${isCur ? ' (actual)' : ''}</option>`;
+  }).join('');
+  sel.value = semanaAnioKey(cur.semana, cur.año);
+}
+
+function openProjectModal() {
+  populateProjectFormStatics();
+  ['pmCliente', 'pmCodigo', 'pmConocimiento', 'pmMadurez', 'pmEstado', 'pmProducto'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('pmDuracion').value = 1;
+  Object.values(ROLE_FIELD_IDS).forEach(id => { document.getElementById(id).value = 0; });
+  document.getElementById('pmSuggestions').style.display = 'none';
+  pendingAssignments = null;
+  pmMeta = null;
+  document.getElementById('projectModalOverlay').classList.add('open');
+}
+
+function closeProjectModal() {
+  document.getElementById('projectModalOverlay').classList.remove('open');
+}
+
+async function suggestTeam(evt) {
+  const codigo  = document.getElementById('pmCodigo').value.trim();
+  const cliente = document.getElementById('pmCliente').value.trim();
+  if (!codigo) { alert('Ingresa el código del proyecto.'); return; }
+
+  const [anioIni, semIni] = document.getElementById('pmSemanaInicio').value.split('-').map(Number);
+  const startIdx = weekRange.findIndex(w => w.semana === semIni && w.año === anioIni);
+  const duracion = Math.max(1, Number(document.getElementById('pmDuracion').value) || 1);
+  const projectWeeks = weekRange.slice(startIdx, startIdx + duracion);
+  const metodologia = document.getElementById('pmMetodologia').value;
+  const industria   = document.getElementById('pmIndustria').value;
+
+  const btn = evt.target;
+  btn.disabled = true;
+  btn.textContent = 'Buscando disponibilidad…';
+  try {
+    rolesExtended = await fetchRolesExtended();
+  } catch (err) {
+    console.error(err);
+    alert('No se pudo leer Roles_Usuarios: ' + err.message);
+    btn.disabled = false;
+    btn.textContent = 'Sugerir equipo →';
+    return;
+  }
+  btn.disabled = false;
+  btn.textContent = 'Sugerir equipo →';
+
+  pendingAssignments = {};
+  let html = '';
+  STAFFING_ROLES.forEach(role => {
+    const horas = Number(document.getElementById(ROLE_FIELD_IDS[role]).value) || 0;
+    if (horas <= 0) return;
+    const horasPerWeek = horas / projectWeeks.length;
+    const candidates = suggestForRole(role, projectWeeks, horas, metodologia, industria);
+    if (!candidates.length) {
+      html += `<div class="pm-role-row"><label>${role} (${fmt(horas)} hrs)</label>
+        <span class="pm-no-candidates">Sin disponibilidad — nadie con ese rol tiene capacidad libre en esas semanas.</span></div>`;
+      pendingAssignments[role] = null;
+    } else {
+      const options = candidates.map((c, i) => `<option value="${escAttr(c.persona)}">${c.persona}${i === 0 ? ' — sugerido' : ''}</option>`).join('');
+      html += `<div class="pm-role-row"><label>${role} (${fmt(horas)} hrs)</label>
+        <select data-role="${escAttr(role)}" onchange="onSuggestionChange(this)">${options}</select></div>`;
+      pendingAssignments[role] = { persona: candidates[0].persona, horasPerWeek, weeks: projectWeeks };
+    }
+  });
+
+  if (!html) html = '<div class="pm-no-candidates">Ingresa horas en al menos un rol para sugerir equipo.</div>';
+  document.getElementById('pmSuggestionsList').innerHTML = html;
+  document.getElementById('pmSuggestions').style.display = 'block';
+  pmMeta = { codigo, cliente, projectWeeks };
+}
+
+function onSuggestionChange(sel) {
+  const role = sel.dataset.role;
+  if (pendingAssignments[role]) pendingAssignments[role].persona = sel.value;
+}
+
+function confirmProjectAssignment() {
+  if (!pendingAssignments || !pmMeta) return;
+  const proyectoName = pmMeta.cliente ? `${pmMeta.codigo} · ${pmMeta.cliente}` : pmMeta.codigo;
+  let asignados = 0;
+
+  Object.values(pendingAssignments).forEach(assign => {
+    if (!assign) return;
+    const { persona, horasPerWeek, weeks } = assign;
+    if (!matrix[persona]) matrix[persona] = {};
+    if (!matrix[persona][proyectoName]) matrix[persona][proyectoName] = {};
+    if (!dirtyMatrix[persona]) dirtyMatrix[persona] = {};
+    if (!dirtyMatrix[persona][proyectoName]) dirtyMatrix[persona][proyectoName] = {};
+    weeks.forEach(w => {
+      dirtyMatrix[persona][proyectoName][w.key] = {
+        hours: Math.round(horasPerWeek * 10) / 10,
+        rowIndex: null, isNew: true, semana: w.semana, año: w.año,
+      };
+    });
+    asignados++;
+  });
+
+  closeProjectModal();
+  renderMatrix();
+  updateDirtyUI();
+  if (asignados > 0) {
+    showToast(`✓ ${proyectoName} agregado — revisa y guarda los cambios`, 'success');
+  } else {
+    showToast('No se asignó a nadie (sin disponibilidad en ningún rol)', 'error');
+  }
+}
+
+// ── Timestamp ─────────────────────────────────────────────────────────────
+function updateTimestamp() {
+  const tsKey = Object.keys(colIdx).find(k => k.includes('actualizacion') || k.includes('update'));
+  let d = null;
+  if (tsKey) {
+    const dates = sheetRows.map(r => r[tsKey]).filter(Boolean);
+    if (dates.length) {
+      const latest = dates.reduce((a, b) => a > b ? a : b);
+      const p = new Date(latest);
+      if (!isNaN(p) && p.getFullYear() >= 2020) d = p;
+    }
+  }
+  if (!d) d = new Date();
+  document.getElementById('updateNotice').textContent =
+    `Datos al ${d.toLocaleString('es-CL', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}`;
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────
+function showToast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = `toast show ${type}`;
+  setTimeout(() => { el.className = 'toast'; }, 3500);
+}
+
+HapticaAuth.init({
+  requiredView: 'manual-edit',
+  onReady: (session) => {
+    HapticaNav.render('navContainer', { ...session, currentView: 'manual-edit' });
+    loadData();
+  }
+});
+</script>
+</body>
+</html>

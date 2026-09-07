@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Registro de Horas · Háptica</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="shared/theme.css" />
+  <style>
+    .entry-card {
+      background: #fff; border-radius: 14px; padding: 24px 28px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07); margin-bottom: 24px; max-width: 640px;
+    }
+    .entry-card h2 { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+    .entry-card .entry-sub { font-size: 12px; color: #6b7280; margin-bottom: 18px; }
+    .entry-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+    .entry-row .filter-group { flex: 1; min-width: 160px; }
+    .suggestion {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #e8f4f5; border: 1px solid #c2dfe2; color: #003237;
+      font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: 8px;
+      margin-bottom: 14px;
+    }
+    .hours-row { display: flex; align-items: flex-end; gap: 12px; }
+    .hours-row .filter-group { max-width: 160px; }
+    .new-proyecto-wrap { display: none; margin-top: 8px; }
+    .table-card {
+      background: #fff; border-radius: 12px; padding: 20px 24px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06); max-width: 640px;
+    }
+    .table-card h2 { font-size: 14px; font-weight: 700; margin-bottom: 14px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase;
+         letter-spacing: 0.5px; color: #5a7a82; padding: 6px 10px; border-bottom: 2px solid #eef2f4; }
+    td { padding: 8px 10px; border-bottom: 1px solid #f0f4f5; color: #1a2e35; }
+    tr:last-child td { border-bottom: none; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>Registro de Horas</h1>
+    <div class="subtitle">Reporta tus horas ejecutadas por proyecto y semana</div>
+  </div>
+  <div class="header-right" id="navContainer"></div>
+</div>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-screen">
+    <div class="login-card">
+      <h2>Acceso restringido</h2>
+      <p>Inicia sesión con tu correo @haptica.co para registrar tus horas.</p>
+      <button class="btn-google" id="btnLogin">
+        <svg viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+        Iniciar sesión con Google
+      </button>
+      <div class="access-denied" id="accessDenied"></div>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="content">
+
+    <div class="entry-card">
+      <h2>Registrar horas</h2>
+      <div class="entry-sub">Elige la semana y el proyecto, y registra las horas que ejecutaste.</div>
+
+      <div class="entry-row">
+        <div class="filter-group">
+          <label>Semana</label>
+          <select id="selSemana"></select>
+        </div>
+        <div class="filter-group">
+          <label>Proyecto</label>
+          <select id="selProyecto"></select>
+        </div>
+      </div>
+
+      <div class="new-proyecto-wrap" id="newProyectoWrap">
+        <div class="filter-group">
+          <label>Nombre del proyecto nuevo</label>
+          <input type="text" id="newProyectoInput" placeholder="Ej: TELMEX-02" autocomplete="off" />
+        </div>
+      </div>
+
+      <div class="suggestion" id="suggestionBox" style="display:none">
+        💡 Horas presupuestadas sugeridas: <strong id="suggestionValue">—</strong>
+      </div>
+
+      <div class="hours-row">
+        <div class="filter-group">
+          <label>Horas ejecutadas</label>
+          <input type="number" id="horasInput" min="0" step="0.5" placeholder="0" />
+        </div>
+        <button class="btn-primary" id="btnGuardar" onclick="saveEntry()">Guardar</button>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <h2 id="tableTitle">Horas registradas</h2>
+      <div id="tableWrap"><div class="state-msg"><div class="spinner"></div>Cargando…</div></div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="shared/staffing-utils.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/nav.js"></script>
+<script>
+let mySession    = null;
+let myPersona    = '';
+let sheetRows    = [];
+let headers      = [];
+let colIdx       = {};
+let hasAnioCol   = false;
+let selectedWeek = null; // { semana, año }
+
+async function loadData() {
+  document.getElementById('tableWrap').innerHTML =
+    '<div class="state-msg"><div class="spinner"></div>Cargando…</div>';
+  try {
+    // gapi.client...get() no siempre devuelve una Promise nativa (a veces le falta .catch),
+    // así que usamos await + try/catch en vez de encadenar .then()/.catch() directo.
+    const res = await gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_DATA
+    });
+    const rows = res.result.values || [];
+    if (!rows.length) throw new Error('Sheet vacío');
+    headers = rows[0].map(h => h.trim().toLowerCase());
+    colIdx = {};
+    headers.forEach((h, i) => { colIdx[h] = i; });
+    hasAnioCol = colIdx['año'] !== undefined;
+
+    sheetRows = rows.slice(1).map((r, i) => {
+      const obj = { _row: i + 2 };
+      headers.forEach((h, j) => { obj[h] = r[j] ?? ''; });
+      obj.colaborador = normalizaColaborador(obj.colaborador);
+      obj.semana = Number(obj.semana) || null;
+      obj.año = Number(obj.año) || (obj.semana ? inferAnioLegacy(obj.semana) : null);
+      obj.horaspresupuestadas = Number(obj.horaspresupuestadas) || 0;
+      obj.horasejecutadas = Number(obj.horasejecutadas) || 0;
+      return obj;
+    }).filter(r => r.semana && r.colaborador);
+
+    populateWeekSelect();
+    onWeekChange();
+  } catch (err) {
+    console.error(err);
+    document.getElementById('tableWrap').innerHTML =
+      `<div class="state-msg">⚠️ Error al cargar datos.<br><small>${err.message}</small></div>`;
+  }
+}
+
+function weekMatches(r, week) {
+  if (!week) return true;
+  return r.semana === week.semana && r.año === week.año;
+}
+
+function myRows(week) {
+  return sheetRows.filter(r => r.colaborador === myPersona && weekMatches(r, week));
+}
+
+function myProjects(week) {
+  let list = [...new Set(myRows(week).map(r => r.proyecto).filter(Boolean))];
+  if (!list.length) list = [...new Set(myRows().map(r => r.proyecto).filter(Boolean))];
+  return list.sort();
+}
+
+function populateWeekSelect() {
+  const weeks = getFullWeekRange();
+  const cur = getCurrentIsoYearWeek();
+  const sel = document.getElementById('selSemana');
+  sel.innerHTML = weeks.map(w => {
+    const isCur = w.semana === cur.semana && w.año === cur.año;
+    return `<option value="${w.key}">${semanaAnioLabel(w.semana, w.año)}${isCur ? ' (semana actual)' : ''}</option>`;
+  }).join('');
+  sel.value = semanaAnioKey(cur.semana, cur.año);
+  selectedWeek = cur;
+  sel.onchange = onWeekChange;
+}
+
+function populateProjectSelect() {
+  const [año, semana] = document.getElementById('selSemana').value.split('-').map(Number);
+  selectedWeek = { semana, año };
+  const projects = myProjects(selectedWeek);
+  const sel = document.getElementById('selProyecto');
+  sel.innerHTML = projects.map(p => `<option value="${escAttr(p)}">${p}</option>`).join('')
+    + `<option value="__new__">+ Nuevo proyecto…</option>`;
+  sel.onchange = onProjectChange;
+  sel.value = projects[0] || '__new__';
+  onProjectChange();
+}
+
+function onWeekChange() {
+  populateProjectSelect();
+  renderTable();
+}
+
+function onProjectChange() {
+  const sel = document.getElementById('selProyecto');
+  const isNew = sel.value === '__new__';
+  document.getElementById('newProyectoWrap').style.display = isNew ? 'block' : 'none';
+  document.getElementById('newProyectoInput').value = '';
+
+  const suggestionBox = document.getElementById('suggestionBox');
+  const horasInput = document.getElementById('horasInput');
+
+  if (isNew) {
+    suggestionBox.style.display = 'none';
+    horasInput.value = '';
+    return;
+  }
+
+  const row = sheetRows.find(r => r.colaborador === myPersona && r.proyecto === sel.value && weekMatches(r, selectedWeek));
+  if (row) {
+    suggestionBox.style.display = 'inline-flex';
+    document.getElementById('suggestionValue').textContent = fmt(row.horaspresupuestadas) + ' hrs';
+    horasInput.value = row.horasejecutadas || '';
+  } else {
+    suggestionBox.style.display = 'none';
+    horasInput.value = '';
+  }
+}
+
+function renderTable() {
+  const rows = myRows(selectedWeek);
+  const wrap = document.getElementById('tableWrap');
+  document.getElementById('tableTitle').textContent =
+    `Horas registradas — ${semanaAnioLabel(selectedWeek.semana, selectedWeek.año)}`;
+  if (!rows.length) {
+    wrap.innerHTML = '<div class="state-msg">Sin horas registradas esta semana todavía.</div>';
+    return;
+  }
+  const body = rows.map(r => `
+    <tr>
+      <td>${r.proyecto}</td>
+      <td style="text-align:right">${fmt(r.horaspresupuestadas)}</td>
+      <td style="text-align:right">${fmt(r.horasejecutadas)}</td>
+    </tr>`).join('');
+  wrap.innerHTML = `
+    <table>
+      <thead><tr><th>Proyecto</th><th style="text-align:right">Presupuestadas</th><th style="text-align:right">Ejecutadas</th></tr></thead>
+      <tbody>${body}</tbody>
+    </table>`;
+}
+
+function colToLetterSafe(key) {
+  const idx = colIdx[key];
+  return idx !== undefined ? colToLetter(idx) : null;
+}
+
+async function saveEntry() {
+  const sel = document.getElementById('selProyecto');
+  const isNew = sel.value === '__new__';
+  const proyecto = isNew ? document.getElementById('newProyectoInput').value.trim() : sel.value;
+  if (!proyecto) { alert('Ingresa un nombre de proyecto.'); return; }
+
+  const horas = Number(document.getElementById('horasInput').value) || 0;
+  const existing = sheetRows.find(r => r.colaborador === myPersona && r.proyecto === proyecto && weekMatches(r, selectedWeek));
+  const now = new Date().toISOString();
+  const ejecLetter = colToLetterSafe('horasejecutadas');
+  const tsKey = Object.keys(colIdx).find(k => k.includes('actualizacion') || k.includes('update'));
+
+  document.getElementById('btnGuardar').disabled = true;
+  try {
+    if (existing && ejecLetter) {
+      const data = [{ range: `${SHEET_DATA}!${ejecLetter}${existing._row}`, values: [[horas]] }];
+      if (tsKey) data.push({ range: `${SHEET_DATA}!${colToLetter(colIdx[tsKey])}${existing._row}`, values: [[now]] });
+      await gapi.client.sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: HapticaAuth.SPREADSHEET_ID,
+        resource: { valueInputOption: 'RAW', data },
+      });
+    } else {
+      const row = new Array(headers.length).fill('');
+      row[colIdx['semana']] = selectedWeek.semana;
+      if (hasAnioCol) row[colIdx['año']] = selectedWeek.año;
+      row[colIdx['colaborador']] = myPersona;
+      row[colIdx['proyecto']] = proyecto;
+      if (colIdx['horasejecutadas'] !== undefined) row[colIdx['horasejecutadas']] = horas;
+      if (tsKey) row[colIdx[tsKey]] = now;
+      await gapi.client.sheets.spreadsheets.values.append({
+        spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: `${SHEET_DATA}!A1`,
+        valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS',
+        resource: { values: [row] },
+      });
+    }
+    showToast('✓ Horas guardadas', 'success');
+    loadData();
+  } catch (err) {
+    console.error(err);
+    showToast('⚠️ Error al guardar: ' + err.message, 'error');
+  } finally {
+    document.getElementById('btnGuardar').disabled = false;
+  }
+}
+
+function showToast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = `toast show ${type}`;
+  setTimeout(() => { el.className = 'toast'; }, 3500);
+}
+
+HapticaAuth.init({
+  requiredView: 'time-report',
+  onReady: (session) => {
+    mySession = session;
+    myPersona = session.persona;
+    HapticaNav.render('navContainer', { ...session, currentView: 'time-report' });
+    loadData();
+  }
+});
+</script>
+</body>
+</html>

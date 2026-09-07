@@ -1,0 +1,4 @@
+# Datos sensibles / de trabajo local — no deben ir al repo
+migracion/
+_extract/
+Roles y Permisos*.xlsx

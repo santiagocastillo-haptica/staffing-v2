@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Staffing del Equipo · Háptica</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="shared/theme.css" />
+  <style>
+    /* ── KPI cards ──────────────────────────────── */
+    .kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+    .kpi-card {
+      background: #003237; border-radius: 12px; padding: 24px 28px; color: #fff;
+      position: relative; overflow: hidden;
+    }
+    .kpi-card::after {
+      content: ''; position: absolute; right: -20px; top: -20px;
+      width: 100px; height: 100px; background: rgba(255,255,255,0.05); border-radius: 50%;
+    }
+    .kpi-card.negative { background: #1a2e35; }
+    .kpi-card .kpi-label {
+      font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px;
+      color: rgba(255,255,255,0.55); margin-bottom: 10px;
+    }
+    .kpi-card .kpi-value { font-size: 36px; font-weight: 800; letter-spacing: -1px; color: #fff; line-height: 1; }
+    .kpi-card .kpi-sub { font-size: 12px; color: rgba(255,255,255,0.45); margin-top: 8px; }
+    .kpi-card .kpi-badge { display: inline-block; margin-top: 10px; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+    .badge-positive { background: rgba(52,211,153,0.2); color: #34d399; }
+    .badge-negative { background: rgba(248,113,113,0.2); color: #f87171; }
+
+    /* ── Carga del equipo ──────────────────────── */
+    .load-card { background: #fff; border-radius: 12px; padding: 20px 28px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 24px; }
+    .load-card-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
+    .load-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280; }
+    .load-pct { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+    .load-row { display: flex; align-items: center; gap: 16px; margin-bottom: 10px; }
+    .load-row:last-child { margin-bottom: 0; }
+    .load-row-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; width: 110px; flex-shrink: 0; }
+    .load-bar-wrap { flex: 1; background: #f0f2f4; border-radius: 99px; height: 12px; overflow: hidden; }
+    .load-bar-fill { height: 100%; border-radius: 99px; transition: width 0.5s ease; }
+    .load-row-value { font-size: 13px; font-weight: 600; color: #374151; width: 48px; text-align: right; flex-shrink: 0; }
+
+    /* ── Chart cards ────────────────────────────── */
+    .chart-card, .trend-card { background: #fff; border-radius: 12px; padding: 24px 28px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 24px; }
+    .chart-card h2, .trend-card h2 { font-size: 15px; font-weight: 700; color: #1a2e35; margin-bottom: 4px; }
+    .chart-card .chart-sub, .trend-subtitle { font-size: 12px; color: #5a7a82; margin-bottom: 20px; }
+    .chart-wrap { position: relative; height: 320px; }
+
+    /* ── Table card ─────────────────────────────── */
+    .table-card { background: #fff; border-radius: 12px; padding: 24px 28px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); overflow-x: auto; }
+    .table-card h2 { font-size: 15px; font-weight: 600; color: #1a2e35; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #5a7a82; padding: 8px 12px; border-bottom: 2px solid #eef2f4; }
+    td { padding: 10px 12px; border-bottom: 1px solid #f0f4f5; color: #1a2e35; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f8fbfc; }
+    .pill { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .pill-ok { background: #d1fae5; color: #065f46; }
+    .pill-warning { background: #fef3c7; color: #92400e; }
+    .pill-exceeded { background: #fee2e2; color: #991b1b; }
+    .pill-critical { background: #991b1b; color: #fff; }
+    .num-pos { color: #059669; font-weight: 600; }
+    .num-neg { color: #dc2626; font-weight: 600; }
+    tr.row-alerta { background: #fff5f5; }
+    tr.row-critical { background: #fee2e2; }
+    tr.row-alerta:hover { background: #fee2e2; }
+    tr.row-alerta td:first-child { border-left: 3px solid #dc2626; }
+
+    /* ── Chart toggle ───────────────────────────── */
+    .toggle-group { display: flex; background: #eef2f4; border-radius: 8px; padding: 3px; gap: 2px; }
+    .toggle-btn { padding: 6px 14px; border: none; border-radius: 6px; font-family: inherit; font-size: 12px; font-weight: 500; color: #5a7a82; background: transparent; cursor: pointer; transition: all 0.15s; }
+    .toggle-btn.active { background: #fff; color: #003237; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+    @media (max-width: 700px) { .kpi-row { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>Staffing del Equipo</h1>
+    <div class="subtitle">Horas presupuestadas y ejecutadas por colaborador y proyecto</div>
+  </div>
+  <div class="header-right" id="navContainer"></div>
+</div>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-screen">
+    <div class="login-card">
+      <h2>Acceso restringido</h2>
+      <p>Inicia sesión con tu correo @haptica.co para ver el staffing del equipo.</p>
+      <button class="btn-google" id="btnLogin">
+        <svg viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+        Iniciar sesión con Google
+      </button>
+      <div class="access-denied" id="accessDenied"></div>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="content">
+
+    <div class="filters">
+      <div class="filter-group">
+        <label>Semana</label>
+        <select id="filterSemana"><option value="">Todas</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Colaborador</label>
+        <select id="filterColaborador"><option value="">Todos</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Proyecto</label>
+        <select id="filterProyecto"><option value="">Todos</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Estado</label>
+        <select id="filterEstado"><option value="">Todos</option></select>
+      </div>
+      <button class="btn-secondary" onclick="resetFilters()">↺ Limpiar</button>
+    </div>
+
+    <div class="update-notice" id="updateNotice" style="margin-bottom:24px">Cargando datos…</div>
+
+    <div class="load-card">
+      <div class="load-card-header">
+        <div class="load-label" id="loadLabel">Carga del equipo</div>
+        <div style="display:flex;gap:20px;align-items:flex-end">
+          <div style="display:flex;flex-direction:column;align-items:center;min-width:90px">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:#9ca3af;margin-bottom:2px">vs presupuesto</div>
+            <div class="load-pct" id="loadPct">—</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;min-width:70px">
+            <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:#9ca3af;margin-bottom:2px">cargabilidad</div>
+            <div class="load-pct" id="loadPct40">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="load-row">
+        <div class="load-row-label">Presupuestadas</div>
+        <div class="load-bar-wrap"><div class="load-bar-fill" id="loadBarPres" style="width:0%; background:#003237"></div></div>
+        <div class="load-row-value" id="loadValPres">—</div>
+      </div>
+      <div class="load-row">
+        <div class="load-row-label">Ejecutadas</div>
+        <div class="load-bar-wrap"><div class="load-bar-fill" id="loadBarEjec" style="width:0%"></div></div>
+        <div class="load-row-value" id="loadValEjec">—</div>
+      </div>
+    </div>
+
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-label">Horas Presupuestadas</div>
+        <div class="kpi-value" id="kpiPresupuestadas">—</div>
+        <div class="kpi-sub">Total del período seleccionado</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Horas Ejecutadas</div>
+        <div class="kpi-value" id="kpiEjecutadas">—</div>
+        <div class="kpi-sub">Horas reportadas</div>
+      </div>
+      <div class="kpi-card negative">
+        <div class="kpi-label">Desviación</div>
+        <div class="kpi-value" id="kpiDesviacion">—</div>
+        <div class="kpi-sub">Ejecutado vs presupuestado</div>
+        <div class="kpi-badge" id="kpiBadge"></div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:4px">
+        <h2 id="chartTitle">Horas por colaborador</h2>
+        <div class="toggle-group">
+          <button class="toggle-btn active" onclick="setChartDim('colaborador')">Por colaborador</button>
+          <button class="toggle-btn" onclick="setChartDim('proyecto')">Por proyecto</button>
+        </div>
+      </div>
+      <div class="chart-sub">Comparación de horas presupuestadas vs ejecutadas</div>
+      <div class="chart-wrap"><canvas id="barChart"></canvas></div>
+    </div>
+
+    <div class="trend-card">
+      <h2>Tendencia semanal</h2>
+      <div class="trend-subtitle">Evolución por semana · Los filtros de colaborador, proyecto y estado aplican; el de semana no</div>
+      <canvas id="trendChart" height="90"></canvas>
+    </div>
+
+    <div class="table-card">
+      <h2>Detalle por proyecto</h2>
+      <div id="tableContainer"><div class="state-msg"><div class="spinner"></div>Cargando…</div></div>
+    </div>
+
+  </div>
+</div>
+
+<script src="shared/staffing-utils.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/nav.js"></script>
+<script>
+const TEAL = '#003237';
+const ORANGE = '#FA4616';
+
+let allData = [];     // filas parseadas: { semana, año, colaborador, proyecto, estado, horaspresupuestadas, horasejecutadas }
+let configMap = {};   // clave semana-año (o solo semana de respaldo) → { festivos, tardes_libres }
+let barChartInstance = null;
+let trendChartInstance = null;
+let chartDim = 'colaborador';
+
+async function loadData() {
+  document.getElementById('tableContainer').innerHTML =
+    '<div class="state-msg"><div class="spinner"></div>Cargando datos…</div>';
+  try {
+    let cfgRes = { result: { values: [] } };
+    try {
+      cfgRes = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_CONFIG });
+    } catch (e) { /* pestaña opcional */ }
+
+    const dataRes = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_DATA });
+
+    configMap = {};
+    const cfgRows = cfgRes.result.values || [];
+    if (cfgRows.length > 1) {
+      const cfgH = cfgRows[0].map(h => h.trim().toLowerCase());
+      const iAnio = cfgH.indexOf('año');
+      cfgRows.slice(1).forEach(r => {
+        const sem = Number(r[cfgH.indexOf('semana')]);
+        if (!sem) return;
+        const cfg = {
+          festivos:      Number(r[cfgH.indexOf('festivos')])      || 0,
+          tardes_libres: Number(r[cfgH.indexOf('tardes_libres')]) || 0,
+        };
+        configMap[sem] = cfg;
+        if (iAnio >= 0) {
+          const anio = Number(r[iAnio]) || inferAnioLegacy(sem);
+          configMap[semanaAnioKey(sem, anio)] = cfg;
+        }
+      });
+    }
+
+    const rows = dataRes.result.values || [];
+    if (!rows.length) throw new Error('Sheet vacío');
+    const headers = rows[0].map(h => h.trim().toLowerCase());
+    const colIdx = {};
+    headers.forEach((h, i) => { colIdx[h] = i; });
+
+    allData = rows.slice(1).map(r => {
+      const obj = {};
+      headers.forEach((h, j) => { obj[h] = r[j] ?? ''; });
+      obj.colaborador = normalizaColaborador(obj.colaborador);
+      obj.semana = Number(obj.semana) || null;
+      obj.año = Number(obj.año) || (obj.semana ? inferAnioLegacy(obj.semana) : null);
+      obj.horaspresupuestadas = Number(obj.horaspresupuestadas) || 0;
+      obj.horasejecutadas = Number(obj.horasejecutadas) || 0;
+      return obj;
+    }).filter(r => r.semana && r.colaborador);
+
+    populateFilters();
+    updateTimestamp();
+    updateDashboard();
+  } catch (err) {
+    console.error(err);
+    document.getElementById('tableContainer').innerHTML =
+      `<div class="state-msg">⚠️ No se pudo cargar la información.<br><small>${err.message}</small></div>`;
+  }
+}
+
+function cfgKeyFor(semana, año) {
+  const key = semanaAnioKey(semana, año);
+  return configMap[key] !== undefined ? key : String(semana);
+}
+
+// ── Semanas únicas presentes en los datos, ordenadas cronológicamente ──────
+function uniqueWeeksSorted() {
+  const seen = new Map();
+  allData.forEach(r => {
+    const key = semanaAnioKey(r.semana, r.año);
+    if (!seen.has(key)) seen.set(key, { semana: r.semana, año: r.año, key, monday: getWeekMonday(r.semana, r.año).getTime() });
+  });
+  return [...seen.values()].sort((a, b) => a.monday - b.monday);
+}
+
+function getSemanaDefaultKey(weeks) {
+  const cur = getCurrentIsoYearWeek();
+  const curMonday = getWeekMonday(cur.semana, cur.año).getTime();
+  const past = weeks.filter(w => w.monday < curMonday);
+  if (past.length) return past[past.length - 1].key;
+  return weeks.length ? weeks[weeks.length - 1].key : '';
+}
+
+// ── Filtros ─────────────────────────────────────────────────────────────
+function populateFilters() {
+  const unique = key => [...new Set(allData.map(r => r[key]).filter(Boolean))].sort();
+  const weeks = uniqueWeeksSorted();
+
+  const selSemana = document.getElementById('filterSemana');
+  selSemana.innerHTML = '<option value="">— Todas —</option>' +
+    weeks.map(w => `<option value="${w.key}">${semanaAnioLabel(w.semana, w.año)}</option>`).join('');
+
+  fillSelect('filterColaborador', unique('colaborador'), 'Todos');
+  fillSelect('filterProyecto', unique('proyecto'), 'Todos');
+  fillSelect('filterEstado', unique('estado'), 'Todos');
+
+  selSemana.value = getSemanaDefaultKey(weeks);
+
+  document.getElementById('filterProyecto').addEventListener('change', () => {
+    const proyectoSel = document.getElementById('filterProyecto').value;
+    selSemana.value = proyectoSel ? '' : getSemanaDefaultKey(weeks);
+    updateDashboard();
+  });
+
+  ['filterSemana', 'filterColaborador', 'filterEstado'].forEach(id =>
+    document.getElementById(id).addEventListener('change', updateDashboard)
+  );
+}
+
+function getFiltered() {
+  const s = document.getElementById('filterSemana').value;
+  const c = document.getElementById('filterColaborador').value;
+  const p = document.getElementById('filterProyecto').value;
+  const e = document.getElementById('filterEstado').value;
+
+  return allData.filter(r =>
+    (!s || semanaAnioKey(r.semana, r.año) === s) &&
+    (!c || r.colaborador === c) &&
+    (!p || r.proyecto === p) &&
+    (!e || r.estado === e)
+  );
+}
+
+function resetFilters() {
+  document.getElementById('filterColaborador').value = '';
+  document.getElementById('filterProyecto').value = '';
+  document.getElementById('filterEstado').value = '';
+  document.getElementById('filterSemana').value = getSemanaDefaultKey(uniqueWeeksSorted());
+  updateDashboard();
+}
+
+// ── KPIs ────────────────────────────────────────────────────────────────
+function updateKPIs(data) {
+  const sum = key => data.reduce((a, r) => a + (Number(r[key]) || 0), 0);
+  const pres = sum('horaspresupuestadas');
+  const ejec = sum('horasejecutadas');
+  const desv = ejec - pres;
+  const pct = pres !== 0 ? (desv / pres * 100) : 0;
+
+  document.getElementById('kpiPresupuestadas').textContent = fmt(pres);
+  document.getElementById('kpiEjecutadas').textContent = fmt(ejec);
+  document.getElementById('kpiDesviacion').textContent = (desv >= 0 ? '+' : '') + fmt(desv);
+
+  const badge = document.getElementById('kpiBadge');
+  if (pres === 0) {
+    badge.textContent = '';
+  } else {
+    badge.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+    badge.className = 'kpi-badge ' + (pct >= 0 ? 'badge-negative' : 'badge-positive');
+  }
+}
+
+// ── Carga del equipo ────────────────────────────────────────────────────
+function updateLoadBar() {
+  const semanaFiltro = document.getElementById('filterSemana').value;
+  const c = document.getElementById('filterColaborador').value;
+  const p = document.getElementById('filterProyecto').value;
+  const e = document.getElementById('filterEstado').value;
+
+  const base = allData.filter(r =>
+    (!c || r.colaborador === c) && (!p || r.proyecto === p) && (!e || r.estado === e)
+  );
+
+  const weeks = uniqueWeeksSorted();
+  let weekObj;
+  if (semanaFiltro) {
+    weekObj = weeks.find(w => w.key === semanaFiltro);
+  } else {
+    const defKey = getSemanaDefaultKey(weeks);
+    weekObj = weeks.find(w => w.key === defKey);
+  }
+
+  const latestData = weekObj ? base.filter(r => r.semana === weekObj.semana && r.año === weekObj.año) : [];
+  const pres = latestData.reduce((a, r) => a + (r.horaspresupuestadas || 0), 0);
+  const ejec = latestData.reduce((a, r) => a + (r.horasejecutadas || 0), 0);
+
+  const realPct = pres > 0 ? (ejec / pres) * 100 : 0;
+  const loadColor = realPct <= 80 ? '#34d399' : realPct <= 100 ? '#FA4616' : '#f87171';
+  const maxVal = Math.max(pres, ejec) || 1;
+
+  const nColab = new Set(latestData.map(r => r.colaborador).filter(Boolean)).size;
+  const cap = weekObj ? capPct(cfgKeyFor(weekObj.semana, weekObj.año), configMap) : 1;
+  const capAjus = 40 * cap;
+  const cap40 = nColab * Math.max(capAjus, 1);
+  const pct40 = cap40 > 0 ? (pres / cap40) * 100 : 0;
+  const color40 = pct40 <= 80 ? '#34d399' : pct40 <= 100 ? '#FA4616' : '#f87171';
+
+  document.getElementById('loadBarPres').style.width = (pres / maxVal * 100) + '%';
+  document.getElementById('loadBarEjec').style.width = (ejec / maxVal * 100) + '%';
+  document.getElementById('loadBarEjec').style.background = loadColor;
+  document.getElementById('loadValPres').textContent = fmt(pres);
+  document.getElementById('loadValEjec').textContent = fmt(ejec);
+  document.getElementById('loadPct').style.color = loadColor;
+  document.getElementById('loadPct').textContent = pres > 0 ? realPct.toFixed(1) + '%' : '—';
+  document.getElementById('loadPct40').style.color = color40;
+  document.getElementById('loadPct40').textContent = cap40 > 0 ? pct40.toFixed(1) + '%' : '—';
+  document.getElementById('loadLabel').textContent =
+    `Carga del equipo · ${weekObj ? semanaAnioLabel(weekObj.semana, weekObj.año) : '—'}`;
+}
+
+// ── Bar chart ───────────────────────────────────────────────────────────
+function aggregateBy(data, dim) {
+  const map = {};
+  data.forEach(r => {
+    const k = r[dim] || 'Sin definir';
+    if (!map[k]) map[k] = { pres: 0, ejec: 0 };
+    map[k].pres += r.horaspresupuestadas || 0;
+    map[k].ejec += r.horasejecutadas || 0;
+  });
+  const entries = Object.entries(map).sort((a, b) => b[1].pres - a[1].pres);
+  return { labels: entries.map(e => e[0]), pres: entries.map(e => e[1].pres), ejec: entries.map(e => e[1].ejec) };
+}
+
+function setChartDim(dim) {
+  chartDim = dim;
+  document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('chartTitle').textContent = dim === 'colaborador' ? 'Horas por colaborador' : 'Horas por proyecto';
+  renderChart(getFiltered());
+}
+
+function renderChart(data) {
+  const agg = aggregateBy(data, chartDim);
+  const ctx = document.getElementById('barChart').getContext('2d');
+  if (barChartInstance) barChartInstance.destroy();
+  barChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: agg.labels,
+      datasets: [
+        { label: 'Presupuestadas', data: agg.pres, backgroundColor: TEAL, borderRadius: 4, borderSkipped: false },
+        { label: 'Ejecutadas', data: agg.ejec, backgroundColor: ORANGE, borderRadius: 4, borderSkipped: false },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', align: 'end', labels: { font: { family: 'Inter', size: 12 }, boxWidth: 12, boxHeight: 12, borderRadius: 3 } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmt(ctx.raw)} hrs` } },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { family: 'Inter', size: 11 }, color: '#5a7a82', maxRotation: 30 } },
+        y: { grid: { color: '#f0f4f5' }, ticks: { font: { family: 'Inter', size: 11 }, color: '#5a7a82', callback: v => fmt(v) } },
+      },
+    },
+  });
+}
+
+// ── Table ───────────────────────────────────────────────────────────────
+function renderTable(data) {
+  const container = document.getElementById('tableContainer');
+  if (!data.length) {
+    container.innerHTML = '<div class="state-msg">Sin datos para los filtros seleccionados.</div>';
+    return;
+  }
+
+  const map = {};
+  data.forEach(r => {
+    const key = (r.proyecto || '') + '||' + (r.colaborador || '');
+    if (!map[key]) map[key] = { proyecto: r.proyecto || '—', colaborador: r.colaborador || '—', presup: 0, ejec: 0, estado: r.estado };
+    map[key].presup += r.horaspresupuestadas || 0;
+    map[key].ejec += r.horasejecutadas || 0;
+    map[key].estado = r.estado;
+  });
+
+  const grouped = Object.values(map).sort((a, b) => a.proyecto.localeCompare(b.proyecto) || a.colaborador.localeCompare(b.colaborador));
+
+  const calcEstado = (presup, ejec) => {
+    if (!presup) return { label: '—', cls: 'pill-warning', rowCls: '' };
+    const ratio = ejec / presup;
+    if (ratio > 1.2) return { label: 'Crítico', cls: 'pill-critical', rowCls: 'row-critical' };
+    if (ratio > 1.0) return { label: 'Presupuesto excedido', cls: 'pill-exceeded', rowCls: 'row-alerta' };
+    if (ratio >= 0.8) return { label: 'Revisar cumplimiento', cls: 'pill-warning', rowCls: '' };
+    return { label: 'En presupuesto', cls: 'pill-ok', rowCls: '' };
+  };
+
+  const rows = grouped.map(r => {
+    const desv = r.ejec - r.presup;
+    const cls = desv >= 0 ? 'num-neg' : 'num-pos';
+    const estado = calcEstado(r.presup, r.ejec);
+    return `<tr class="${estado.rowCls}">
+      <td>${r.proyecto}</td>
+      <td>${r.colaborador}</td>
+      <td style="text-align:right">${fmt(r.presup)}</td>
+      <td style="text-align:right">${fmt(r.ejec)}</td>
+      <td style="text-align:right" class="${cls}">${(desv >= 0 ? '+' : '') + fmt(desv)}</td>
+      <td><span class="pill ${estado.cls}">${estado.label}</span></td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <table>
+      <thead><tr><th>Proyecto</th><th>Colaborador</th><th style="text-align:right">Presupuestadas</th><th style="text-align:right">Ejecutadas</th><th style="text-align:right">Desviación</th><th>Estado</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Trend chart ─────────────────────────────────────────────────────────
+function renderTrend(data) {
+  const byWeek = {};
+  data.forEach(r => {
+    if (!r.semana || !r.año) return;
+    const key = semanaAnioKey(r.semana, r.año);
+    if (!byWeek[key]) byWeek[key] = { pres: 0, ejec: 0, semana: r.semana, año: r.año, monday: getWeekMonday(r.semana, r.año).getTime() };
+    byWeek[key].pres += r.horaspresupuestadas || 0;
+    byWeek[key].ejec += r.horasejecutadas || 0;
+  });
+
+  const weeks = Object.values(byWeek).sort((a, b) => a.monday - b.monday);
+  const labels = weeks.map(w => `S${w.semana}·${String(w.año).slice(2)}`);
+  const pres = weeks.map(w => w.pres);
+  const ejec = weeks.map(w => w.ejec);
+
+  const ctx = document.getElementById('trendChart').getContext('2d');
+  if (trendChartInstance) trendChartInstance.destroy();
+  trendChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Presupuestadas', data: pres, borderColor: '#003237', backgroundColor: 'rgba(0,50,55,0.08)', borderWidth: 2, borderDash: [6, 3], pointRadius: 4, pointBackgroundColor: '#003237', fill: false, tension: 0.3 },
+        { label: 'Ejecutadas', data: ejec, borderColor: '#FA4616', backgroundColor: 'rgba(250,70,22,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#FA4616', fill: false, tension: 0.3 },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 12 } } }, tooltip: { mode: 'index', intersect: false } },
+      scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } }, x: { grid: { display: false } } },
+    },
+  });
+}
+
+// ── Timestamp ───────────────────────────────────────────────────────────
+function updateTimestamp() {
+  let d = null;
+  const dates = allData.map(r => r.ultimaactualizacion).filter(Boolean);
+  if (dates.length) {
+    const latest = dates.reduce((a, b) => (a > b ? a : b));
+    const parsed = new Date(latest);
+    if (!isNaN(parsed) && parsed.getFullYear() >= 2020) d = parsed;
+  }
+  if (!d) d = new Date();
+  const formatted = d.toLocaleString('es-CL', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  document.getElementById('updateNotice').textContent = `Datos actualizados al ${formatted}`;
+}
+
+// ── Main update cycle ─────────────────────────────────────────────────────
+function updateDashboard() {
+  const data = getFiltered();
+  updateKPIs(data);
+  renderChart(data);
+  renderTable(data);
+  updateLoadBar();
+
+  const c = document.getElementById('filterColaborador').value;
+  const p = document.getElementById('filterProyecto').value;
+  const e = document.getElementById('filterEstado').value;
+  const trendData = allData.filter(r => (!c || r.colaborador === c) && (!p || r.proyecto === p) && (!e || r.estado === e));
+  renderTrend(trendData);
+}
+
+HapticaAuth.init({
+  requiredView: 'staffing',
+  onReady: (session) => {
+    HapticaNav.render('navContainer', { ...session, currentView: 'staffing' });
+    loadData();
+  }
+});
+</script>
+</body>
+</html>
