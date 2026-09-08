@@ -1,7 +1,7 @@
 // ── Háptica Staffing · barra de navegación por rol ──────────────────────────
 // Requiere shared/auth.js cargado antes (usa HapticaAuth.VIEW_META / logout).
 const HapticaNav = (() => {
-  const VIEW_ORDER = ['time-report', 'staffing', 'dimensionamiento', 'manual-edit'];
+  const VIEW_ORDER = ['time-report', 'staffing', 'dimensionamiento', 'reforecast', 'manual-edit'];
 
   function initials(name) {
     return (name || '?').trim().split(/\s+/).map(p => p[0] || '').join('').toUpperCase().slice(0, 2);

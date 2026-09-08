@@ -291,24 +291,41 @@ function getSemanaDefaultKey(weeks) {
   return weeks.length ? weeks[weeks.length - 1].key : '';
 }
 
+// Semanas que se pueden elegir en el filtro: todas las que ya tienen datos
+// (de cualquier año) + todas las del año calendario actual, aunque todavía no
+// tengan datos (para poder mirar hacia adelante, no solo hasta hoy).
+function allSelectableWeeks() {
+  const cur = getCurrentIsoYearWeek();
+  const yearWeeks = getFullWeekRange().filter(w => w.año === cur.año);
+  const map = new Map();
+  [...uniqueWeeksSorted(), ...yearWeeks].forEach(w => map.set(w.key, w));
+  return [...map.values()].sort((a, b) => a.monday - b.monday);
+}
+
+function parseWeekKey(key) {
+  const [año, semana] = key.split('-').map(Number);
+  return { semana, año, key, monday: getWeekMonday(semana, año).getTime() };
+}
+
 // ── Filtros ─────────────────────────────────────────────────────────────
 function populateFilters() {
   const unique = key => [...new Set(allData.map(r => r[key]).filter(Boolean))].sort();
-  const weeks = uniqueWeeksSorted();
+  const dataWeeks = uniqueWeeksSorted();
+  const selectableWeeks = allSelectableWeeks();
 
   const selSemana = document.getElementById('filterSemana');
   selSemana.innerHTML = '<option value="">— Todas —</option>' +
-    weeks.map(w => `<option value="${w.key}">${semanaAnioLabel(w.semana, w.año)}</option>`).join('');
+    selectableWeeks.map(w => `<option value="${w.key}">${semanaAnioLabel(w.semana, w.año)}</option>`).join('');
 
   fillSelect('filterColaborador', unique('colaborador'), 'Todos');
   fillSelect('filterProyecto', unique('proyecto'), 'Todos');
   fillSelect('filterEstado', unique('estado'), 'Todos');
 
-  selSemana.value = getSemanaDefaultKey(weeks);
+  selSemana.value = getSemanaDefaultKey(dataWeeks);
 
   document.getElementById('filterProyecto').addEventListener('change', () => {
     const proyectoSel = document.getElementById('filterProyecto').value;
-    selSemana.value = proyectoSel ? '' : getSemanaDefaultKey(weeks);
+    selSemana.value = proyectoSel ? '' : getSemanaDefaultKey(dataWeeks);
     updateDashboard();
   });
 
@@ -371,11 +388,13 @@ function updateLoadBar() {
     (!c || r.colaborador === c) && (!p || r.proyecto === p) && (!e || r.estado === e)
   );
 
-  const weeks = uniqueWeeksSorted();
   let weekObj;
   if (semanaFiltro) {
-    weekObj = weeks.find(w => w.key === semanaFiltro);
+    // Se resuelve directo desde la clave (no busca en las semanas con datos)
+    // para que funcione con semanas futuras que todavía no tienen nada cargado.
+    weekObj = parseWeekKey(semanaFiltro);
   } else {
+    const weeks = uniqueWeeksSorted();
     const defKey = getSemanaDefaultKey(weeks);
     weekObj = weeks.find(w => w.key === defKey);
   }

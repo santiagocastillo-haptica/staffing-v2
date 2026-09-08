@@ -4,7 +4,10 @@
 const SHEET_DATA   = 'Dashboard_Data';
 const SHEET_CONFIG = 'Config_Cargabilidad';
 const SHEET_ROLES  = 'Roles_Usuarios';
+const SHEET_ROLE_CONFIG = 'Roles_Config';
 const SHEET_VENTA  = 'Dimensionamiento_Venta';
+const SHEET_PROYECTOS = 'Proyectos';
+const SHEET_SOLICITUDES = 'Solicitudes_Tiempo';
 
 const NOMBRE_MAP = {
   'A. Roa':            'Ana Roa',

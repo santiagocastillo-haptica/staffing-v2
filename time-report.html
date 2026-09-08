@@ -24,9 +24,10 @@
     .hours-row { display: flex; align-items: flex-end; gap: 12px; }
     .hours-row .filter-group { max-width: 160px; }
     .new-proyecto-wrap { display: none; margin-top: 8px; }
+    .tables-row { display: flex; gap: 24px; flex-wrap: wrap; max-width: 900px; }
     .table-card {
       background: #fff; border-radius: 12px; padding: 20px 24px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.06); max-width: 640px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06); flex: 1; min-width: 280px;
     }
     .table-card h2 { font-size: 14px; font-weight: 700; margin-bottom: 14px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -100,9 +101,15 @@
       </div>
     </div>
 
-    <div class="table-card">
-      <h2 id="tableTitle">Horas registradas</h2>
-      <div id="tableWrap"><div class="state-msg"><div class="spinner"></div>Cargando…</div></div>
+    <div class="tables-row">
+      <div class="table-card">
+        <h2 id="registradasTitle">Horas registradas</h2>
+        <div id="registradasWrap"><div class="state-msg"><div class="spinner"></div>Cargando…</div></div>
+      </div>
+      <div class="table-card">
+        <h2 id="asignadasTitle">Horas asignadas</h2>
+        <div id="asignadasWrap"><div class="state-msg"><div class="spinner"></div>Cargando…</div></div>
+      </div>
     </div>
 
   </div>
@@ -123,7 +130,9 @@ let hasAnioCol   = false;
 let selectedWeek = null; // { semana, año }
 
 async function loadData() {
-  document.getElementById('tableWrap').innerHTML =
+  document.getElementById('registradasWrap').innerHTML =
+    '<div class="state-msg"><div class="spinner"></div>Cargando…</div>';
+  document.getElementById('asignadasWrap').innerHTML =
     '<div class="state-msg"><div class="spinner"></div>Cargando…</div>';
   try {
     // gapi.client...get() no siempre devuelve una Promise nativa (a veces le falta .catch),
@@ -153,8 +162,9 @@ async function loadData() {
     onWeekChange();
   } catch (err) {
     console.error(err);
-    document.getElementById('tableWrap').innerHTML =
-      `<div class="state-msg">⚠️ Error al cargar datos.<br><small>${err.message}</small></div>`;
+    const msg = `<div class="state-msg">⚠️ Error al cargar datos.<br><small>${err.message}</small></div>`;
+    document.getElementById('registradasWrap').innerHTML = msg;
+    document.getElementById('asignadasWrap').innerHTML = msg;
   }
 }
 
@@ -200,7 +210,7 @@ function populateProjectSelect() {
 
 function onWeekChange() {
   populateProjectSelect();
-  renderTable();
+  renderTables();
 }
 
 function onProjectChange() {
@@ -229,24 +239,33 @@ function onProjectChange() {
   }
 }
 
-function renderTable() {
+function renderTables() {
+  const label = semanaAnioLabel(selectedWeek.semana, selectedWeek.año);
+  document.getElementById('registradasTitle').textContent = `Horas registradas — ${label}`;
+  document.getElementById('asignadasTitle').textContent = `Horas asignadas — ${label}`;
+
   const rows = myRows(selectedWeek);
-  const wrap = document.getElementById('tableWrap');
-  document.getElementById('tableTitle').textContent =
-    `Horas registradas — ${semanaAnioLabel(selectedWeek.semana, selectedWeek.año)}`;
+  const registradas = rows.filter(r => r.horasejecutadas > 0);
+  const asignadas = rows.filter(r => r.horaspresupuestadas > 0);
+
+  renderHoursTable('registradasWrap', registradas, 'horasejecutadas', 'Sin horas registradas esta semana todavía.');
+  renderHoursTable('asignadasWrap', asignadas, 'horaspresupuestadas', 'No tienes horas asignadas esta semana.');
+}
+
+function renderHoursTable(containerId, rows, valueKey, emptyMsg) {
+  const wrap = document.getElementById(containerId);
   if (!rows.length) {
-    wrap.innerHTML = '<div class="state-msg">Sin horas registradas esta semana todavía.</div>';
+    wrap.innerHTML = `<div class="state-msg">${emptyMsg}</div>`;
     return;
   }
   const body = rows.map(r => `
     <tr>
       <td>${r.proyecto}</td>
-      <td style="text-align:right">${fmt(r.horaspresupuestadas)}</td>
-      <td style="text-align:right">${fmt(r.horasejecutadas)}</td>
+      <td style="text-align:right">${fmt(r[valueKey])}</td>
     </tr>`).join('');
   wrap.innerHTML = `
     <table>
-      <thead><tr><th>Proyecto</th><th style="text-align:right">Presupuestadas</th><th style="text-align:right">Ejecutadas</th></tr></thead>
+      <thead><tr><th>Proyecto</th><th style="text-align:right">Horas</th></tr></thead>
       <tbody>${body}</tbody>
     </table>`;
 }

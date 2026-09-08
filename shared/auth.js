@@ -9,6 +9,9 @@ const HapticaAuth = (() => {
   const TOKEN_KEY  = 'haptica_token';
   const EXPIRY_KEY = 'haptica_token_expiry';
 
+  // Respaldo por si la pestaña Roles_Config no existe todavía o no tiene el rol
+  // — la fuente de verdad real vive en el Sheet (ver fetchRoleViewsConfig) para
+  // que se puedan crear roles nuevos sin tocar código.
   const ROLE_VIEWS = {
     DirEst:    ['time-report', 'staffing'],
     LidEst:    ['time-report', 'staffing'],
@@ -26,6 +29,19 @@ const HapticaAuth = (() => {
     'staffing':         { label: 'Staffing del Equipo',       href: 'staffing-matrix.html' },
     'dimensionamiento': { label: 'Dimensionamiento de Venta', href: 'dimensionamiento-venta.html' },
     'manual-edit':      { label: 'Editar Presupuesto',        href: 'presupuesto.html' },
+    'reforecast':       { label: 'Solicitud de Tiempos',      href: 'reforecast.html' },
+  };
+
+  // Encabezados que puede usar la pestaña Roles_Config (columna "Rol" + una por vista).
+  // Las dos columnas de "Solicitud de tiempos" comparten la misma vista — la
+  // página decide internamente si actúas como Equipos u Ops.
+  const HEADER_TO_VIEW = {
+    'registro de horas':                 'time-report',
+    'staffing del equipo':               'staffing',
+    'dimensionamiento de venta':         'dimensionamiento',
+    'editar presupuesto':                'manual-edit',
+    'solicitud de tiempos (equipos)':    'reforecast',
+    'solicitud de tiempos (ops)':        'reforecast',
   };
 
   let gapiReady   = false;
@@ -158,6 +174,39 @@ const HapticaAuth = (() => {
     return null;
   }
 
+  // Lee qué vistas tiene cada rol desde la pestaña Roles_Config del Sheet —
+  // así se pueden crear roles nuevos (o cambiar los permisos de uno existente)
+  // editando el Sheet, sin tocar código. Si la pestaña no existe todavía o el
+  // rol no aparece ahí, resolveSession cae de vuelta al mapa ROLE_VIEWS fijo.
+  async function fetchRoleViewsConfig() {
+    try {
+      const res = await gapi.client.sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID, range: SHEET_ROLE_CONFIG,
+      });
+      const rows = res.result.values || [];
+      if (rows.length < 2) return {};
+      const headers = rows[0].map(h => h.trim().toLowerCase());
+      const iRol = headers.indexOf('rol');
+      if (iRol === -1) return {};
+      const map = {};
+      rows.slice(1).forEach(row => {
+        const rol = (row[iRol] || '').trim();
+        if (!rol) return;
+        const views = [];
+        headers.forEach((h, i) => {
+          if (i === iRol) return;
+          const viewId = HEADER_TO_VIEW[h];
+          const val = (row[i] || '').trim().toLowerCase();
+          if (viewId && val && val !== 'no') views.push(viewId);
+        });
+        map[rol] = views;
+      });
+      return map;
+    } catch (e) {
+      return {}; // pestaña opcional — sin ella se usa el respaldo ROLE_VIEWS
+    }
+  }
+
   async function resolveSession(accessToken) {
     try {
       const infoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
@@ -174,7 +223,8 @@ const HapticaAuth = (() => {
         return;
       }
 
-      const allowedViews = ROLE_VIEWS[roleRow.rol] || [];
+      const roleViewsConfig = await fetchRoleViewsConfig();
+      const allowedViews = roleViewsConfig[roleRow.rol] || ROLE_VIEWS[roleRow.rol] || [];
       if (opts.requiredView && !allowedViews.includes(opts.requiredView)) {
         const fallback = allowedViews[0];
         const link = fallback

@@ -137,6 +137,30 @@
     .pm-role-row label { font-size: 12px; font-weight: 700; color: #003237; min-width: 170px; }
     .pm-role-row select { flex: 1; padding: 6px 10px; border: 1.5px solid #d4dfe2; border-radius: 6px; font-size: 12px; font-family: inherit; }
     .pm-no-candidates { font-size: 12px; color: #dc2626; }
+
+    /* ── Catálogo de proyectos ────────────────────── */
+    .catalog-add-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .catalog-add-row input {
+      flex: 1; padding: 8px 11px; border: 1.5px solid #d4dfe2; border-radius: 7px;
+      font-family: inherit; font-size: 13px; color: #1a2e35;
+    }
+    .catalog-add-row input:focus { outline: none; border-color: #003237; }
+    .catalog-list { max-height: 50vh; overflow-y: auto; }
+    .catalog-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f0f4f5; }
+    .catalog-name { flex: 1; font-size: 13px; font-weight: 600; color: #1a2e35; }
+    .catalog-status { font-size: 11px; font-weight: 700; width: 60px; }
+    .switch { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch .slider {
+      position: absolute; cursor: pointer; inset: 0; background: #d4dfe2;
+      border-radius: 99px; transition: .2s;
+    }
+    .switch .slider::before {
+      content: ""; position: absolute; height: 16px; width: 16px; left: 3px; bottom: 3px;
+      background: #fff; border-radius: 50%; transition: .2s;
+    }
+    .switch input:checked + .slider { background: #34d399; }
+    .switch input:checked + .slider::before { transform: translateX(18px); }
   </style>
 </head>
 <body>
@@ -174,6 +198,7 @@
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn-secondary" id="btnToggleFinished" onclick="toggleHideFinished()">👁 Ocultar finalizados</button>
+        <button class="btn-secondary" onclick="openProjectsMgmt()">🗂 Gestionar proyectos</button>
         <button class="btn-primary" onclick="openProjectModal()">🚀 Nuevo proyecto</button>
         <button class="btn-secondary" id="btnDiscard" onclick="discardChanges()" style="display:none">Descartar</button>
         <button class="btn-primary" id="btnSave" onclick="saveChanges()" disabled>💾 Guardar cambios</button>
@@ -241,6 +266,21 @@
   </div>
 </div>
 
+<!-- Modal catálogo de proyectos (activar/cerrar) -->
+<div class="modal-overlay" id="projectsMgmtOverlay">
+  <div class="modal modal-lg">
+    <h3>Gestionar proyectos</h3>
+    <div class="catalog-add-row">
+      <input type="text" id="newCatalogProyecto" placeholder="Nombre del proyecto nuevo" autocomplete="off" />
+      <button class="btn-primary" onclick="addCatalogProject()">+ Agregar</button>
+    </div>
+    <div class="catalog-list" id="catalogList"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeProjectsMgmt()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <div class="saving-overlay" id="savingOverlay"><div class="spinner"></div><p>Guardando…</p></div>
 <div class="toast" id="toast"></div>
 
@@ -260,6 +300,8 @@ let dirtyMatrix = {}; // misma forma, solo celdas modificadas: { hours, rowIndex
 let modalPerson = null;
 let weekRange   = [];  // lista fija de semanas a mostrar: [{ semana, año, key, monday }]
 let hideFinished = false;
+let proyectoEstado    = {}; // { [proyecto]: 'Activo' | 'Cerrado' }
+let proyectosRowIndex = {}; // { [proyecto]: fila en la pestaña Proyectos, para actualizar en vez de duplicar }
 
 // ── Load data ─────────────────────────────────────────────────────────────
 async function loadData() {
@@ -276,6 +318,8 @@ async function loadData() {
     const dataRes = await Promise.resolve(gapi.client.sheets.spreadsheets.values.get({
       spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_DATA
     }));
+
+    await loadProyectosCatalog();
 
     // Parse config — se guarda con clave semana+año y, de respaldo, solo semana
     // (por si Config_Cargabilidad todavía no tiene columna Año).
@@ -352,6 +396,130 @@ function cfgKeyFor(w) {
   return configMap[w.key] !== undefined ? w.key : String(w.semana);
 }
 
+// Un proyecto "no finalizado" es el que tiene horas asignadas en CUALQUIER semana
+// (pasada, actual o futura) — no solo en la semana actual puntual. Incluye
+// ediciones sin guardar, para que no se oculte algo que se acaba de editar.
+function projectHasAnyHours(col, proy) {
+  const persisted = (matrix[col] && matrix[col][proy]) ? Object.values(matrix[col][proy]) : [];
+  if (persisted.some(c => c && c.hours > 0)) return true;
+  const dirty = (dirtyMatrix[col] && dirtyMatrix[col][proy]) ? Object.values(dirtyMatrix[col][proy]) : [];
+  return dirty.some(c => c && c.hours > 0);
+}
+
+// Un proyecto marcado "Cerrado" en el catálogo se oculta siempre (aunque tenga
+// horas en alguna semana) — es una decisión explícita de GerEjec/DirOps, no
+// depende de si hay horas cargadas.
+function shouldHideProject(col, proy) {
+  if (proyectoEstado[proy] === 'Cerrado') return true;
+  return !projectHasAnyHours(col, proy);
+}
+
+// ── Catálogo de proyectos (activo/cerrado) ─────────────────────────────────
+async function loadProyectosCatalog() {
+  proyectoEstado = {};
+  proyectosRowIndex = {};
+  try {
+    const res = await gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_PROYECTOS,
+    });
+    const rows = res.result.values || [];
+    if (rows.length < 2) return;
+    const h = rows[0].map(x => x.trim().toLowerCase());
+    const iProy = h.indexOf('proyecto');
+    const iEstado = h.indexOf('estado');
+    if (iProy === -1) return;
+    rows.slice(1).forEach((r, i) => {
+      const name = (r[iProy] || '').trim();
+      if (!name) return;
+      proyectoEstado[name] = (r[iEstado] || '').trim() || 'Activo';
+      proyectosRowIndex[name] = i + 2;
+    });
+  } catch (e) { /* pestaña Proyectos opcional */ }
+}
+
+function allKnownProjectNames() {
+  const set = new Set(Object.keys(proyectoEstado));
+  Object.values(matrix).forEach(proyMap => Object.keys(proyMap).forEach(p => set.add(p)));
+  return [...set].sort();
+}
+
+function openProjectsMgmt() {
+  renderCatalogList();
+  document.getElementById('projectsMgmtOverlay').classList.add('open');
+}
+function closeProjectsMgmt() {
+  document.getElementById('projectsMgmtOverlay').classList.remove('open');
+}
+
+function renderCatalogList() {
+  const names = allKnownProjectNames();
+  const el = document.getElementById('catalogList');
+  if (!names.length) { el.innerHTML = '<div class="state-msg">Todavía no hay proyectos.</div>'; return; }
+  el.innerHTML = names.map(name => {
+    const activo = proyectoEstado[name] !== 'Cerrado';
+    return `<div class="catalog-row">
+      <span class="catalog-name">${name}</span>
+      <label class="switch">
+        <input type="checkbox" ${activo ? 'checked' : ''} onchange="toggleProjectStatus('${escAttr(name)}', this.checked)">
+        <span class="slider"></span>
+      </label>
+      <span class="catalog-status" style="color:${activo ? '#059669' : '#dc2626'}">${activo ? 'Activo' : 'Cerrado'}</span>
+    </div>`;
+  }).join('');
+}
+
+async function saveCatalogEstado(proy, estado) {
+  const rowIndex = proyectosRowIndex[proy];
+  if (rowIndex) {
+    await gapi.client.sheets.spreadsheets.values.update({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID,
+      range: `${SHEET_PROYECTOS}!B${rowIndex}`,
+      valueInputOption: 'RAW',
+      resource: { values: [[estado]] },
+    });
+  } else {
+    await gapi.client.sheets.spreadsheets.values.append({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: `${SHEET_PROYECTOS}!A1`,
+      valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS',
+      resource: { values: [[proy, estado]] },
+    });
+    await loadProyectosCatalog(); // para conocer la fila real y no duplicar la próxima vez
+  }
+}
+
+async function toggleProjectStatus(proy, isActive) {
+  const nuevoEstado = isActive ? 'Activo' : 'Cerrado';
+  proyectoEstado[proy] = nuevoEstado;
+  renderMatrix(); // por si "ocultar finalizados" ya está activo
+  try {
+    await saveCatalogEstado(proy, nuevoEstado);
+  } catch (err) {
+    console.error(err);
+    showToast('⚠️ No se pudo guardar el estado: ' + err.message, 'error');
+  } finally {
+    renderCatalogList();
+  }
+}
+
+async function addCatalogProject() {
+  const input = document.getElementById('newCatalogProyecto');
+  const name = input.value.trim();
+  if (!name) { alert('Ingresa un nombre de proyecto.'); return; }
+  if (allKnownProjectNames().includes(name)) { alert(`"${name}" ya existe en el catálogo.`); return; }
+  input.value = '';
+  proyectoEstado[name] = 'Activo';
+  renderCatalogList();
+  try {
+    await saveCatalogEstado(name, 'Activo');
+    showToast('✓ Proyecto agregado al catálogo', 'success');
+  } catch (err) {
+    console.error(err);
+    showToast('⚠️ Error al guardar: ' + err.message, 'error');
+  } finally {
+    renderCatalogList();
+  }
+}
+
 // ── Render matrix ─────────────────────────────────────────────────────────
 // No resetea dirtyMatrix — así se puede re-renderizar (toggle de "ocultar
 // finalizados", agregar proyecto) sin perder ediciones sin guardar. El reset
@@ -372,7 +540,6 @@ function renderMatrix() {
 
   const cur = getCurrentIsoYearWeek();
   const isCurWeek = w => w.semana === cur.semana && w.año === cur.año;
-  const curKey = semanaAnioKey(cur.semana, cur.año);
 
   // ── THEAD ──
   let thead = '<thead>';
@@ -405,10 +572,7 @@ function renderMatrix() {
   colaboradores.forEach(col => {
     let proyectos = sortProjects(Object.keys(matrix[col]));
     if (hideFinished) {
-      proyectos = proyectos.filter(proy => {
-        const cell = matrix[col][proy][curKey];
-        return cell && cell.hours > 0;
-      });
+      proyectos = proyectos.filter(proy => !shouldHideProject(col, proy));
       if (!proyectos.length) return; // nadie que mostrar de esta persona
     }
 
