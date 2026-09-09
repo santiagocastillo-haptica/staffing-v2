@@ -361,7 +361,8 @@ async function loadData() {
       return obj;
     }).filter(r => r.semana && r.colaborador);
 
-    buildMatrix();
+    const todasLasPersonas = await fetchAllPersonas();
+    buildMatrix(todasLasPersonas);
     buildWeekRange();
     dirtyMatrix = {};
     renderMatrix();
@@ -374,8 +375,11 @@ async function loadData() {
   }
 }
 
-function buildMatrix() {
+function buildMatrix(todasLasPersonas) {
   matrix = {};
+  // Todas las personas de Roles_Usuarios aparecen aunque no tengan ninguna
+  // fila todavía en Dashboard_Data (para poder empezar a asignarles horas).
+  (todasLasPersonas || []).forEach(persona => { matrix[persona] = {}; });
   sheetRows.forEach(r => {
     const col  = r.colaborador;
     const proy = r.proyecto || '—';

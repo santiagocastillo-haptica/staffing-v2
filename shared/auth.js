@@ -199,7 +199,7 @@ const HapticaAuth = (() => {
           const val = (row[i] || '').trim().toLowerCase();
           if (viewId && val && val !== 'no') views.push(viewId);
         });
-        map[rol] = views;
+        map[rol] = [...new Set(views)]; // ej. Equipos+Ops ambos "SI" no debe duplicar 'reforecast'
       });
       return map;
     } catch (e) {

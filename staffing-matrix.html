@@ -258,7 +258,7 @@ async function loadData() {
       return obj;
     }).filter(r => r.semana && r.colaborador);
 
-    populateFilters();
+    await populateFilters();
     updateTimestamp();
     updateDashboard();
   } catch (err) {
@@ -308,7 +308,7 @@ function parseWeekKey(key) {
 }
 
 // ── Filtros ─────────────────────────────────────────────────────────────
-function populateFilters() {
+async function populateFilters() {
   const unique = key => [...new Set(allData.map(r => r[key]).filter(Boolean))].sort();
   const dataWeeks = uniqueWeeksSorted();
   const selectableWeeks = allSelectableWeeks();
@@ -317,7 +317,11 @@ function populateFilters() {
   selSemana.innerHTML = '<option value="">— Todas —</option>' +
     selectableWeeks.map(w => `<option value="${w.key}">${semanaAnioLabel(w.semana, w.año)}</option>`).join('');
 
-  fillSelect('filterColaborador', unique('colaborador'), 'Todos');
+  // Une con Roles_Usuarios para que alguien sin horas todavía (ej. recién asignado)
+  // siga apareciendo en el filtro, aunque hoy no tenga nada que mostrar.
+  const todasLasPersonas = await fetchAllPersonas();
+  const colaboradores = [...new Set([...unique('colaborador'), ...todasLasPersonas])].sort();
+  fillSelect('filterColaborador', colaboradores, 'Todos');
   fillSelect('filterProyecto', unique('proyecto'), 'Todos');
   fillSelect('filterEstado', unique('estado'), 'Todos');
 

@@ -7,34 +7,112 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="shared/theme.css" />
   <style>
-    .entry-card {
-      background: #fff; border-radius: 14px; padding: 24px 28px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.07); margin-bottom: 24px; max-width: 640px;
+    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    .toolbar-left { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .changes-badge {
+      font-size: 12px; font-weight: 600; color: #92400e;
+      background: #fef3c7; border: 1px solid #fde68a;
+      padding: 4px 10px; border-radius: 99px; display: none;
     }
-    .entry-card h2 { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
-    .entry-card .entry-sub { font-size: 12px; color: #6b7280; margin-bottom: 18px; }
-    .entry-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
-    .entry-row .filter-group { flex: 1; min-width: 160px; }
-    .suggestion {
-      display: inline-flex; align-items: center; gap: 6px;
-      background: #e8f4f5; border: 1px solid #c2dfe2; color: #003237;
-      font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: 8px;
-      margin-bottom: 14px;
+    .legend { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #6b7280; }
+    .legend .dot { width: 10px; height: 10px; border-radius: 3px; background: #fee2e2; border: 1.5px solid #dc2626; display: inline-block; }
+
+    /* ── Matrix (mismo look de Editar Presupuesto) ─────────── */
+    .matrix-wrap { overflow-x: auto; border-radius: 12px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); }
+    .matrix { border-collapse: collapse; font-size: 12px; background: #fff; min-width: 100%; }
+    .matrix .col-name {
+      position: sticky; left: 0; z-index: 2;
+      background: #fff; min-width: 180px; max-width: 200px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    .hours-row { display: flex; align-items: flex-end; gap: 12px; }
-    .hours-row .filter-group { max-width: 160px; }
-    .new-proyecto-wrap { display: none; margin-top: 8px; }
-    .tables-row { display: flex; gap: 24px; flex-wrap: wrap; max-width: 900px; }
-    .table-card {
-      background: #fff; border-radius: 12px; padding: 20px 24px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.06); flex: 1; min-width: 280px;
+    .matrix thead .col-name { background: #1a2e35; z-index: 3; }
+    .matrix .col-desv { position: sticky; right: 0; z-index: 2; background: #fff; min-width: 110px; }
+    .matrix thead .col-desv { background: #1a2e35; z-index: 3; }
+
+    .matrix thead tr th { padding: 0; text-align: center; font-weight: 600; white-space: nowrap; }
+    .row-month th {
+      background: #1a2e35; color: rgba(255,255,255,0.7);
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.8px; padding: 7px 4px; border-right: 1px solid #2d4350;
     }
-    .table-card h2 { font-size: 14px; font-weight: 700; margin-bottom: 14px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th { text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase;
-         letter-spacing: 0.5px; color: #5a7a82; padding: 6px 10px; border-bottom: 2px solid #eef2f4; }
-    td { padding: 8px 10px; border-bottom: 1px solid #f0f4f5; color: #1a2e35; }
-    tr:last-child td { border-bottom: none; }
+    .row-month th.col-name, .row-month th.col-desv { color: rgba(255,255,255,0.4); font-size: 10px; }
+    .row-dates th {
+      background: #243b44; color: rgba(255,255,255,0.5);
+      font-size: 10px; font-weight: 500; padding: 4px 4px; border-right: 1px solid #2d4350;
+    }
+    .row-weeks th {
+      background: #1a2e35; color: #fff;
+      font-size: 13px; font-weight: 800; padding: 6px 4px;
+      border-right: 1px solid #2d4350; min-width: 52px;
+    }
+
+    .row-project td {
+      background: #fff; padding: 2px 4px;
+      border-bottom: 1px solid #f0f4f5; border-right: 1px solid #f0f4f5; text-align: center;
+    }
+    .row-project td.col-name {
+      text-align: left; padding-left: 12px; font-size: 12px;
+      color: #374151; font-weight: 600; border-right: 2px solid #003237;
+    }
+    .row-project td.col-desv { border-left: 2px solid #003237; }
+    .row-project:hover td { background: #f8fbfc; }
+    .row-project:hover td.col-name, .row-project:hover td.col-desv { background: #f8fbfc; }
+    .row-add td { background: #fff; padding: 4px; border-bottom: 2px solid #eef2f4; }
+    .btn-add-row {
+      background: none; border: none; cursor: pointer;
+      color: #9ca3af; font-size: 11px; font-weight: 500;
+      padding: 4px 12px; font-family: inherit; transition: color 0.15s;
+    }
+    .btn-add-row:hover { color: #003237; }
+
+    .hrs-input {
+      width: 44px; padding: 4px 2px; border: 1.5px solid transparent;
+      border-radius: 5px; font-family: inherit; font-size: 12px; font-weight: 600;
+      color: #1a2e35; text-align: center; background: transparent; transition: all 0.12s;
+    }
+    .hrs-input:hover { border-color: #d4dfe2; background: #fff; }
+    .hrs-input:focus { outline: none; border-color: #003237; background: #fff; }
+    .hrs-input.changed { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
+    .hrs-input.missing { border-color: #dc2626; background: #fee2e2; }
+    .hrs-input::-webkit-inner-spin-button, .hrs-input::-webkit-outer-spin-button { opacity: 0.4; }
+
+    .pill { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+    .pill-ok       { background: #d1fae5; color: #065f46; }
+    .pill-warning  { background: #fef3c7; color: #92400e; }
+    .pill-exceeded { background: #fee2e2; color: #991b1b; }
+    .pill-critical { background: #991b1b; color: #fff; }
+
+    .saving-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,50,55,0.7); z-index: 200;
+      align-items: center; justify-content: center; flex-direction: column; gap: 12px;
+    }
+    .saving-overlay.open { display: flex; }
+    .saving-overlay .spinner {
+      width: 36px; height: 36px; border: 4px solid rgba(255,255,255,0.3);
+      border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    .saving-overlay p { color: #fff; font-size: 14px; font-weight: 600; }
+
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.4); z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #fff; border-radius: 14px; padding: 26px 30px;
+      width: 380px; max-width: 95vw; box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+    }
+    .modal h3 { font-size: 15px; font-weight: 700; margin-bottom: 18px; }
+    .modal-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+    .modal-field label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #5a7a82; }
+    .modal-field input {
+      padding: 8px 11px; border: 1.5px solid #d4dfe2; border-radius: 7px;
+      font-family: inherit; font-size: 13px; font-weight: 500; color: #1a2e35; background: #fff;
+    }
+    .modal-field input:focus { outline: none; border-color: #003237; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
   </style>
 </head>
 <body>
@@ -65,78 +143,60 @@
 <!-- APP -->
 <div id="app">
   <div class="content">
-
-    <div class="entry-card">
-      <h2>Registrar horas</h2>
-      <div class="entry-sub">Elige la semana y el proyecto, y registra las horas que ejecutaste.</div>
-
-      <div class="entry-row">
-        <div class="filter-group">
-          <label>Semana</label>
-          <select id="selSemana"></select>
-        </div>
-        <div class="filter-group">
-          <label>Proyecto</label>
-          <select id="selProyecto"></select>
-        </div>
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <div class="update-notice" id="updateNotice">Cargando datos…</div>
+        <span class="changes-badge" id="changesBadge"></span>
+        <span class="legend"><span class="dot"></span> Semana pasada sin reportar</span>
       </div>
-
-      <div class="new-proyecto-wrap" id="newProyectoWrap">
-        <div class="filter-group">
-          <label>Nombre del proyecto nuevo</label>
-          <input type="text" id="newProyectoInput" placeholder="Ej: TELMEX-02" autocomplete="off" />
-        </div>
-      </div>
-
-      <div class="suggestion" id="suggestionBox" style="display:none">
-        💡 Horas presupuestadas sugeridas: <strong id="suggestionValue">—</strong>
-      </div>
-
-      <div class="hours-row">
-        <div class="filter-group">
-          <label>Horas ejecutadas</label>
-          <input type="number" id="horasInput" min="0" step="0.5" placeholder="0" />
-        </div>
-        <button class="btn-primary" id="btnGuardar" onclick="saveEntry()">Guardar</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn-secondary" id="btnDiscard" onclick="discardChanges()" style="display:none">Descartar</button>
+        <button class="btn-primary" id="btnSave" onclick="saveChanges()" disabled>💾 Guardar cambios</button>
       </div>
     </div>
-
-    <div class="tables-row">
-      <div class="table-card">
-        <h2 id="registradasTitle">Horas registradas</h2>
-        <div id="registradasWrap"><div class="state-msg"><div class="spinner"></div>Cargando…</div></div>
-      </div>
-      <div class="table-card">
-        <h2 id="asignadasTitle">Horas asignadas</h2>
-        <div id="asignadasWrap"><div class="state-msg"><div class="spinner"></div>Cargando…</div></div>
-      </div>
+    <div id="matrixContainer">
+      <div class="state-msg"><div class="spinner"></div>Cargando…</div>
     </div>
-
   </div>
 </div>
 
+<!-- Modal nuevo proyecto -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3>Agregar proyecto</h3>
+    <div class="modal-field">
+      <label>Proyecto</label>
+      <input type="text" id="modalProyecto" placeholder="Ej: TELMEX-02" autocomplete="off" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn-primary" onclick="confirmNewRow()">Agregar</button>
+    </div>
+  </div>
+</div>
+
+<div class="saving-overlay" id="savingOverlay"><div class="spinner"></div><p>Guardando…</p></div>
 <div class="toast" id="toast"></div>
 
 <script src="shared/staffing-utils.js"></script>
 <script src="shared/auth.js"></script>
 <script src="shared/nav.js"></script>
 <script>
-let mySession    = null;
-let myPersona    = '';
-let sheetRows    = [];
-let headers      = [];
-let colIdx       = {};
-let hasAnioCol   = false;
-let selectedWeek = null; // { semana, año }
+let mySession   = null;
+let myPersona   = '';
+let sheetRows   = [];
+let headers     = [];
+let colIdx      = {};
+let hasAnioCol  = false;
+// proyectoData[proyecto][semanaAnioKey] = { presup, ejec, rowIndex }
+let proyectoData = {};
+let dirtyMatrix  = {}; // proyectoData[proyecto][key] = { hours, rowIndex, isNew, semana, año }
+let weekRange    = [];
 
 async function loadData() {
-  document.getElementById('registradasWrap').innerHTML =
-    '<div class="state-msg"><div class="spinner"></div>Cargando…</div>';
-  document.getElementById('asignadasWrap').innerHTML =
-    '<div class="state-msg"><div class="spinner"></div>Cargando…</div>';
+  document.getElementById('matrixContainer').innerHTML =
+    '<div class="state-msg"><div class="spinner"></div>Cargando datos…</div>';
   try {
-    // gapi.client...get() no siempre devuelve una Promise nativa (a veces le falta .catch),
-    // así que usamos await + try/catch en vez de encadenar .then()/.catch() directo.
     const res = await gapi.client.sheets.spreadsheets.values.get({
       spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_DATA
     });
@@ -158,166 +218,276 @@ async function loadData() {
       return obj;
     }).filter(r => r.semana && r.colaborador);
 
-    populateWeekSelect();
-    onWeekChange();
+    buildProyectoData();
+    buildWeekRange();
+    dirtyMatrix = {};
+    renderMatrix();
+    updateTimestamp();
   } catch (err) {
     console.error(err);
-    const msg = `<div class="state-msg">⚠️ Error al cargar datos.<br><small>${err.message}</small></div>`;
-    document.getElementById('registradasWrap').innerHTML = msg;
-    document.getElementById('asignadasWrap').innerHTML = msg;
+    document.getElementById('matrixContainer').innerHTML =
+      `<div class="state-msg">⚠️ Error al cargar datos.<br><small>${err.message}</small></div>`;
   }
 }
 
-function weekMatches(r, week) {
-  if (!week) return true;
-  return r.semana === week.semana && r.año === week.año;
+function buildProyectoData() {
+  proyectoData = {};
+  sheetRows.filter(r => r.colaborador === myPersona).forEach(r => {
+    const proy = r.proyecto || '—';
+    const key = semanaAnioKey(r.semana, r.año);
+    if (!proyectoData[proy]) proyectoData[proy] = {};
+    proyectoData[proy][key] = { presup: r.horaspresupuestadas, ejec: r.horasejecutadas, rowIndex: r._row };
+  });
 }
 
-function myRows(week) {
-  return sheetRows.filter(r => r.colaborador === myPersona && weekMatches(r, week));
+function buildWeekRange() {
+  weekRange = getFullWeekRange();
 }
 
-function myProjects(week) {
-  let list = [...new Set(myRows(week).map(r => r.proyecto).filter(Boolean))];
-  if (!list.length) list = [...new Set(myRows().map(r => r.proyecto).filter(Boolean))];
-  return list.sort();
+function cfgKeyFor(w) { return w.key; } // no depende de Config_Cargabilidad aquí
+
+function calcDesviacionPill(presup, ejec) {
+  if (!presup) return { label: '—', cls: 'pill-warning' };
+  const ratio = ejec / presup;
+  if (ratio > 1.2) return { label: 'Crítico', cls: 'pill-critical' };
+  if (ratio > 1.0) return { label: 'Excedido', cls: 'pill-exceeded' };
+  if (ratio >= 0.8) return { label: 'Revisar', cls: 'pill-warning' };
+  return { label: 'En presupuesto', cls: 'pill-ok' };
 }
 
-function populateWeekSelect() {
-  const weeks = getFullWeekRange();
+function effectiveCell(proy, key) {
+  const dirty = dirtyMatrix[proy] && dirtyMatrix[proy][key];
+  const persisted = proyectoData[proy] && proyectoData[proy][key];
+  return {
+    presup: persisted ? persisted.presup : 0,
+    ejec: dirty ? dirty.hours : (persisted ? persisted.ejec : 0),
+    rowIndex: persisted ? persisted.rowIndex : null,
+  };
+}
+
+// ── Render matrix ─────────────────────────────────────────────────────────
+function renderMatrix() {
+  updateDirtyUI();
+
+  const monthGroups = [];
+  weekRange.forEach(w => {
+    const { month, year } = weekMonthYear(w.semana, w.año);
+    const gkey = `${year}-${month}`;
+    if (!monthGroups.length || monthGroups[monthGroups.length - 1].gkey !== gkey) {
+      monthGroups.push({ gkey, label: MONTHS_ES[month], count: 1 });
+    } else {
+      monthGroups[monthGroups.length - 1].count++;
+    }
+  });
+
   const cur = getCurrentIsoYearWeek();
-  const sel = document.getElementById('selSemana');
-  sel.innerHTML = weeks.map(w => {
-    const isCur = w.semana === cur.semana && w.año === cur.año;
-    return `<option value="${w.key}">${semanaAnioLabel(w.semana, w.año)}${isCur ? ' (semana actual)' : ''}</option>`;
-  }).join('');
-  sel.value = semanaAnioKey(cur.semana, cur.año);
-  selectedWeek = cur;
-  sel.onchange = onWeekChange;
-}
+  const curMonday = getWeekMonday(cur.semana, cur.año).getTime();
+  const isCurWeek = w => w.semana === cur.semana && w.año === cur.año;
 
-function populateProjectSelect() {
-  const [año, semana] = document.getElementById('selSemana').value.split('-').map(Number);
-  selectedWeek = { semana, año };
-  const projects = myProjects(selectedWeek);
-  const sel = document.getElementById('selProyecto');
-  sel.innerHTML = projects.map(p => `<option value="${escAttr(p)}">${p}</option>`).join('')
-    + `<option value="__new__">+ Nuevo proyecto…</option>`;
-  sel.onchange = onProjectChange;
-  sel.value = projects[0] || '__new__';
-  onProjectChange();
-}
+  let thead = '<thead>';
+  thead += '<tr class="row-month"><th class="col-name"></th>';
+  monthGroups.forEach(g => { thead += `<th colspan="${g.count}">${g.label}</th>`; });
+  thead += '<th class="col-desv"></th></tr>';
 
-function onWeekChange() {
-  populateProjectSelect();
-  renderTables();
-}
+  thead += '<tr class="row-dates"><th class="col-name"></th>';
+  weekRange.forEach(w => { thead += `<th>${weekDateLabel(w.semana, w.año)}</th>`; });
+  thead += '<th class="col-desv"></th></tr>';
 
-function onProjectChange() {
-  const sel = document.getElementById('selProyecto');
-  const isNew = sel.value === '__new__';
-  document.getElementById('newProyectoWrap').style.display = isNew ? 'block' : 'none';
-  document.getElementById('newProyectoInput').value = '';
+  thead += '<tr class="row-weeks"><th class="col-name"></th>';
+  weekRange.forEach(w => {
+    thead += `<th style="${isCurWeek(w) ? 'background:#FA4616;color:#fff' : ''}">${w.semana}<br><span style="font-size:9px;font-weight:600;opacity:.7">${w.año}</span></th>`;
+  });
+  thead += '<th class="col-desv">Desviación</th></tr>';
+  thead += '</thead>';
 
-  const suggestionBox = document.getElementById('suggestionBox');
-  const horasInput = document.getElementById('horasInput');
+  const proyectos = sortProjects(Object.keys(proyectoData));
+  let tbody = '<tbody>';
 
-  if (isNew) {
-    suggestionBox.style.display = 'none';
-    horasInput.value = '';
-    return;
+  if (!proyectos.length) {
+    tbody += `<tr><td class="col-name" colspan="${weekRange.length + 2}" style="text-align:center;color:#9ca3af;padding:20px">Todavía no tienes proyectos asignados.</td></tr>`;
   }
 
-  const row = sheetRows.find(r => r.colaborador === myPersona && r.proyecto === sel.value && weekMatches(r, selectedWeek));
-  if (row) {
-    suggestionBox.style.display = 'inline-flex';
-    document.getElementById('suggestionValue').textContent = fmt(row.horaspresupuestadas) + ' hrs';
-    horasInput.value = row.horasejecutadas || '';
+  proyectos.forEach(proy => {
+    tbody += `<tr class="row-project" data-proy="${escAttr(proy)}">`;
+    tbody += `<td class="col-name">${proy}</td>`;
+    let totalPresup = 0, totalEjec = 0;
+    weekRange.forEach(w => {
+      const cell = effectiveCell(proy, w.key);
+      totalPresup += cell.presup;
+      totalEjec += cell.ejec;
+      const dirty = dirtyMatrix[proy] && dirtyMatrix[proy][w.key] !== undefined;
+      const isPast = w.monday < curMonday;
+      const missing = isPast && cell.presup > 0 && cell.ejec === 0;
+      const cls = ['hrs-input', dirty ? 'changed' : '', missing ? 'missing' : ''].filter(Boolean).join(' ');
+      tbody += `<td style="${isCurWeek(w) ? 'background:#fffaf8' : ''}">
+        <input class="${cls}" type="number" min="0" step="0.5"
+          value="${cell.ejec || ''}" placeholder=""
+          data-proy="${escAttr(proy)}" data-week="${w.key}" data-semana="${w.semana}" data-anio="${w.año}"
+          data-rowindex="${cell.rowIndex || ''}"
+          onchange="onCellChange(this)" />
+      </td>`;
+    });
+    const pill = calcDesviacionPill(totalPresup, totalEjec);
+    tbody += `<td class="col-desv" id="desv-${escAttr(proy)}"><span class="pill ${pill.cls}">${pill.label}</span></td>`;
+    tbody += '</tr>';
+  });
+
+  tbody += `<tr class="row-add">
+    <td class="col-name"><button class="btn-add-row" onclick="openModal()">＋ agregar proyecto</button></td>
+    ${weekRange.map(() => '<td></td>').join('')}
+    <td class="col-desv"></td>
+  </tr>`;
+
+  tbody += '</tbody>';
+
+  document.getElementById('matrixContainer').innerHTML =
+    `<div class="matrix-wrap"><table class="matrix">${thead}${tbody}</table></div>`;
+}
+
+// ── Cell change ───────────────────────────────────────────────────────────
+function onCellChange(input) {
+  const proy   = input.dataset.proy;
+  const key    = input.dataset.week;
+  const semana = Number(input.dataset.semana);
+  const año    = Number(input.dataset.anio);
+  const rowI   = input.dataset.rowindex ? Number(input.dataset.rowindex) : null;
+  const newV   = Number(input.value) || 0;
+  const orig   = (proyectoData[proy] && proyectoData[proy][key]) ? proyectoData[proy][key].ejec : 0;
+
+  if (!dirtyMatrix[proy]) dirtyMatrix[proy] = {};
+
+  if (newV === orig) {
+    delete dirtyMatrix[proy][key];
+    input.classList.remove('changed');
   } else {
-    suggestionBox.style.display = 'none';
-    horasInput.value = '';
+    dirtyMatrix[proy][key] = { hours: newV, rowIndex: rowI, isNew: !rowI, semana, año };
+    input.classList.add('changed');
   }
-}
-
-function renderTables() {
-  const label = semanaAnioLabel(selectedWeek.semana, selectedWeek.año);
-  document.getElementById('registradasTitle').textContent = `Horas registradas — ${label}`;
-  document.getElementById('asignadasTitle').textContent = `Horas asignadas — ${label}`;
-
-  const rows = myRows(selectedWeek);
-  const registradas = rows.filter(r => r.horasejecutadas > 0);
-  const asignadas = rows.filter(r => r.horaspresupuestadas > 0);
-
-  renderHoursTable('registradasWrap', registradas, 'horasejecutadas', 'Sin horas registradas esta semana todavía.');
-  renderHoursTable('asignadasWrap', asignadas, 'horaspresupuestadas', 'No tienes horas asignadas esta semana.');
-}
-
-function renderHoursTable(containerId, rows, valueKey, emptyMsg) {
-  const wrap = document.getElementById(containerId);
-  if (!rows.length) {
-    wrap.innerHTML = `<div class="state-msg">${emptyMsg}</div>`;
-    return;
+  input.classList.toggle('missing', false); // ya tiene un valor tecleado, se resuelve la alerta visual al instante
+  if (newV === 0) {
+    // si vuelve a quedar en 0 y la semana ya pasó con horas presupuestadas, se vuelve a marcar
+    const cur = getCurrentIsoYearWeek();
+    const curMonday = getWeekMonday(cur.semana, cur.año).getTime();
+    const w = weekRange.find(w => w.key === key);
+    const cell = effectiveCell(proy, key);
+    if (w && w.monday < curMonday && cell.presup > 0) input.classList.add('missing');
   }
-  const body = rows.map(r => `
-    <tr>
-      <td>${r.proyecto}</td>
-      <td style="text-align:right">${fmt(r[valueKey])}</td>
-    </tr>`).join('');
-  wrap.innerHTML = `
-    <table>
-      <thead><tr><th>Proyecto</th><th style="text-align:right">Horas</th></tr></thead>
-      <tbody>${body}</tbody>
-    </table>`;
+
+  refreshDesviacion(proy);
+  updateDirtyUI();
 }
 
-function colToLetterSafe(key) {
-  const idx = colIdx[key];
-  return idx !== undefined ? colToLetter(idx) : null;
+function refreshDesviacion(proy) {
+  let totalPresup = 0, totalEjec = 0;
+  weekRange.forEach(w => {
+    const cell = effectiveCell(proy, w.key);
+    totalPresup += cell.presup;
+    totalEjec += cell.ejec;
+  });
+  const pill = calcDesviacionPill(totalPresup, totalEjec);
+  const el = document.getElementById(`desv-${proy}`);
+  if (el) el.innerHTML = `<span class="pill ${pill.cls}">${pill.label}</span>`;
 }
 
-async function saveEntry() {
-  const sel = document.getElementById('selProyecto');
-  const isNew = sel.value === '__new__';
-  const proyecto = isNew ? document.getElementById('newProyectoInput').value.trim() : sel.value;
-  if (!proyecto) { alert('Ingresa un nombre de proyecto.'); return; }
+function updateDirtyUI() {
+  let count = 0;
+  Object.values(dirtyMatrix).forEach(w => count += Object.keys(w).length);
+  const badge = document.getElementById('changesBadge');
+  badge.textContent = `${count} cambio${count !== 1 ? 's' : ''} sin guardar`;
+  badge.style.display = count > 0 ? 'inline-block' : 'none';
+  document.getElementById('btnSave').disabled = count === 0;
+  document.getElementById('btnDiscard').style.display = count > 0 ? 'inline-flex' : 'none';
+}
 
-  const horas = Number(document.getElementById('horasInput').value) || 0;
-  const existing = sheetRows.find(r => r.colaborador === myPersona && r.proyecto === proyecto && weekMatches(r, selectedWeek));
-  const now = new Date().toISOString();
-  const ejecLetter = colToLetterSafe('horasejecutadas');
-  const tsKey = Object.keys(colIdx).find(k => k.includes('actualizacion') || k.includes('update'));
+function discardChanges() {
+  dirtyMatrix = {};
+  renderMatrix();
+}
 
-  document.getElementById('btnGuardar').disabled = true;
+// ── Save ──────────────────────────────────────────────────────────────────
+async function saveChanges() {
+  const updateData = [];
+  const newRows    = [];
+  const now        = new Date().toISOString();
+  const ejecCol    = colIdx['horasejecutadas'];
+  const tsColI     = Object.keys(colIdx).findIndex(k => k.includes('actualizacion') || k.includes('update'));
+
+  Object.entries(dirtyMatrix).forEach(([proy, weekMap]) => {
+    Object.entries(weekMap).forEach(([key, cell]) => {
+      if (cell.isNew || !cell.rowIndex) {
+        newRows.push({ semana: cell.semana, año: cell.año, proyecto: proy, horas: cell.hours });
+      } else {
+        updateData.push({ range: `${SHEET_DATA}!${colToLetter(ejecCol)}${cell.rowIndex}`, values: [[cell.hours]] });
+        if (tsColI >= 0) updateData.push({ range: `${SHEET_DATA}!${colToLetter(tsColI)}${cell.rowIndex}`, values: [[now]] });
+      }
+    });
+  });
+
+  document.getElementById('savingOverlay').classList.add('open');
   try {
-    if (existing && ejecLetter) {
-      const data = [{ range: `${SHEET_DATA}!${ejecLetter}${existing._row}`, values: [[horas]] }];
-      if (tsKey) data.push({ range: `${SHEET_DATA}!${colToLetter(colIdx[tsKey])}${existing._row}`, values: [[now]] });
+    if (updateData.length) {
       await gapi.client.sheets.spreadsheets.values.batchUpdate({
         spreadsheetId: HapticaAuth.SPREADSHEET_ID,
-        resource: { valueInputOption: 'RAW', data },
+        resource: { valueInputOption: 'RAW', data: updateData },
       });
-    } else {
-      const row = new Array(headers.length).fill('');
-      row[colIdx['semana']] = selectedWeek.semana;
-      if (hasAnioCol) row[colIdx['año']] = selectedWeek.año;
-      row[colIdx['colaborador']] = myPersona;
-      row[colIdx['proyecto']] = proyecto;
-      if (colIdx['horasejecutadas'] !== undefined) row[colIdx['horasejecutadas']] = horas;
-      if (tsKey) row[colIdx[tsKey]] = now;
+    }
+    if (newRows.length) {
+      const appendData = newRows.map(r => {
+        const row = new Array(headers.length).fill('');
+        row[colIdx['semana']] = r.semana;
+        if (hasAnioCol) row[colIdx['año']] = r.año;
+        row[colIdx['colaborador']] = myPersona;
+        row[colIdx['proyecto']] = r.proyecto;
+        row[ejecCol] = r.horas;
+        if (tsColI >= 0) row[tsColI] = now;
+        return row;
+      });
       await gapi.client.sheets.spreadsheets.values.append({
         spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: `${SHEET_DATA}!A1`,
         valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS',
-        resource: { values: [row] },
+        resource: { values: appendData },
       });
     }
-    showToast('✓ Horas guardadas', 'success');
-    loadData();
+    document.getElementById('savingOverlay').classList.remove('open');
+    showToast('✓ Guardado correctamente', 'success');
+    await loadData();
   } catch (err) {
     console.error(err);
+    document.getElementById('savingOverlay').classList.remove('open');
     showToast('⚠️ Error al guardar: ' + err.message, 'error');
-  } finally {
-    document.getElementById('btnGuardar').disabled = false;
   }
+}
+
+// ── Modal nuevo proyecto ─────────────────────────────────────────────────
+function openModal() {
+  document.getElementById('modalProyecto').value = '';
+  document.getElementById('modalOverlay').classList.add('open');
+}
+function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+function confirmNewRow() {
+  const proy = document.getElementById('modalProyecto').value.trim();
+  if (!proy) { alert('Ingresa un nombre de proyecto.'); return; }
+  if (proyectoData[proy]) { alert(`Ya tienes el proyecto ${proy}.`); return; }
+  proyectoData[proy] = {};
+  closeModal();
+  renderMatrix();
+}
+
+// ── Timestamp ─────────────────────────────────────────────────────────────
+function updateTimestamp() {
+  const tsKey = Object.keys(colIdx).find(k => k.includes('actualizacion') || k.includes('update'));
+  let d = null;
+  if (tsKey) {
+    const dates = sheetRows.filter(r => r.colaborador === myPersona).map(r => r[tsKey]).filter(Boolean);
+    if (dates.length) {
+      const latest = dates.reduce((a, b) => a > b ? a : b);
+      const p = new Date(latest);
+      if (!isNaN(p) && p.getFullYear() >= 2020) d = p;
+    }
+  }
+  if (!d) d = new Date();
+  document.getElementById('updateNotice').textContent =
+    `Datos al ${d.toLocaleString('es-CL', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
 }
 
 function showToast(msg, type = '') {

@@ -213,3 +213,20 @@ function colToLetter(idx) {
 function escAttr(s) {
   return String(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+
+// Todas las personas registradas en Roles_Usuarios (no solo quienes ya
+// tienen filas en Dashboard_Data) — para que alguien sin horas todavía
+// igual aparezca en las matrices y se le puedan asignar.
+async function fetchAllPersonas() {
+  try {
+    const res = await gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_ROLES,
+    });
+    const rows = res.result.values || [];
+    if (rows.length < 2) return [];
+    const h = rows[0].map(x => x.trim().toLowerCase());
+    const iPersona = h.indexOf('persona');
+    if (iPersona === -1) return [];
+    return rows.slice(1).map(r => normalizaColaborador((r[iPersona] || '').trim())).filter(Boolean);
+  } catch (e) { return []; }
+}
