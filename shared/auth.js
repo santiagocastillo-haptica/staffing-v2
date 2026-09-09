@@ -224,7 +224,10 @@ const HapticaAuth = (() => {
       }
 
       const roleViewsConfig = await fetchRoleViewsConfig();
-      const allowedViews = roleViewsConfig[roleRow.rol] || ROLE_VIEWS[roleRow.rol] || [];
+      const configuredViews = roleViewsConfig[roleRow.rol] || ROLE_VIEWS[roleRow.rol] || [];
+      // "Staffing del Equipo" es visible para cualquier persona registrada,
+      // sin importar su rol — no depende de Roles_Config.
+      const allowedViews = [...new Set([...configuredViews, 'staffing'])];
       if (opts.requiredView && !allowedViews.includes(opts.requiredView)) {
         const fallback = allowedViews[0];
         const link = fallback

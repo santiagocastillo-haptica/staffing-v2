@@ -121,6 +121,7 @@
         <label>Estado</label>
         <select id="filterEstado"><option value="">Todos</option></select>
       </div>
+      <button class="btn-secondary" id="btnMisEquipos" onclick="toggleMisEquipos()">👤 Ver mis equipos</button>
       <button class="btn-secondary" onclick="resetFilters()">↺ Limpiar</button>
     </div>
 
@@ -209,6 +210,8 @@ let configMap = {};   // clave semana-año (o solo semana de respaldo) → { fes
 let barChartInstance = null;
 let trendChartInstance = null;
 let chartDim = 'colaborador';
+let misPersona = null;
+let misEquiposOnly = false;
 
 async function loadData() {
   document.getElementById('tableContainer').innerHTML =
@@ -338,18 +341,34 @@ async function populateFilters() {
   );
 }
 
-function getFiltered() {
-  const s = document.getElementById('filterSemana').value;
+// Proyectos donde YO tengo al menos una fila — usado por "Ver mis equipos"
+// para mostrar el equipo COMPLETO de esos proyectos, no solo mis propias horas.
+function misProyectosSet() {
+  if (!misPersona) return null;
+  return new Set(allData.filter(r => r.colaborador === misPersona).map(r => r.proyecto));
+}
+
+function passesCommonFilters(r) {
   const c = document.getElementById('filterColaborador').value;
   const p = document.getElementById('filterProyecto').value;
   const e = document.getElementById('filterEstado').value;
+  const misSet = misEquiposOnly ? misProyectosSet() : null;
+  return (!c || r.colaborador === c) && (!p || r.proyecto === p) && (!e || r.estado === e) &&
+    (!misSet || misSet.has(r.proyecto));
+}
 
-  return allData.filter(r =>
-    (!s || semanaAnioKey(r.semana, r.año) === s) &&
-    (!c || r.colaborador === c) &&
-    (!p || r.proyecto === p) &&
-    (!e || r.estado === e)
-  );
+function getFiltered() {
+  const s = document.getElementById('filterSemana').value;
+  return allData.filter(r => (!s || semanaAnioKey(r.semana, r.año) === s) && passesCommonFilters(r));
+}
+
+function toggleMisEquipos() {
+  misEquiposOnly = !misEquiposOnly;
+  const btn = document.getElementById('btnMisEquipos');
+  btn.textContent = misEquiposOnly ? '👤 Ver todos los proyectos' : '👤 Ver mis equipos';
+  btn.classList.toggle('btn-primary', misEquiposOnly);
+  btn.classList.toggle('btn-secondary', !misEquiposOnly);
+  updateDashboard();
 }
 
 function resetFilters() {
@@ -384,13 +403,7 @@ function updateKPIs(data) {
 // ── Carga del equipo ────────────────────────────────────────────────────
 function updateLoadBar() {
   const semanaFiltro = document.getElementById('filterSemana').value;
-  const c = document.getElementById('filterColaborador').value;
-  const p = document.getElementById('filterProyecto').value;
-  const e = document.getElementById('filterEstado').value;
-
-  const base = allData.filter(r =>
-    (!c || r.colaborador === c) && (!p || r.proyecto === p) && (!e || r.estado === e)
-  );
+  const base = allData.filter(r => passesCommonFilters(r));
 
   let weekObj;
   if (semanaFiltro) {
@@ -585,16 +598,14 @@ function updateDashboard() {
   renderTable(data);
   updateLoadBar();
 
-  const c = document.getElementById('filterColaborador').value;
-  const p = document.getElementById('filterProyecto').value;
-  const e = document.getElementById('filterEstado').value;
-  const trendData = allData.filter(r => (!c || r.colaborador === c) && (!p || r.proyecto === p) && (!e || r.estado === e));
+  const trendData = allData.filter(r => passesCommonFilters(r));
   renderTrend(trendData);
 }
 
 HapticaAuth.init({
   requiredView: 'staffing',
   onReady: (session) => {
+    misPersona = session.persona;
     HapticaNav.render('navContainer', { ...session, currentView: 'staffing' });
     loadData();
   }
