@@ -15,6 +15,10 @@ const NOMBRE_MAP = {
   'J. Rodríguez':      'Jhojann Rodríguez',
   'Jhojann Rodriguez': 'Jhojann Rodríguez',
   'Natalia Rodriguez': 'Natalia Rodríguez',
+  'Ma Alejandra Corrales': 'María Alejandra Corrales',
+  'Ma Camila Rueda':       'María Camila Rueda',
+  'Ma Camila Venegas':     'María Camila Venegas',
+  'Ma Fernanda Martinez':  'María Fernanda Martínez',
 };
 
 const PROJECT_FIXED_ORDER = ['ADM-01', 'ADM-02', 'COM', 'OPS'];
