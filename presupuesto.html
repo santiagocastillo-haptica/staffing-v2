@@ -139,6 +139,22 @@
     .pm-no-candidates { font-size: 12px; color: #dc2626; }
 
     /* ── Catálogo de proyectos ────────────────────── */
+    .import-hint { font-size: 12px; color: #5a7a82; line-height: 1.5; margin-bottom: 16px; }
+    .import-hint code { background: #f0f4f5; padding: 1px 5px; border-radius: 4px; }
+    .import-summary {
+      background: #f8fbfc; border: 1px solid #e5edf0; border-radius: 8px;
+      padding: 12px 14px; margin: 16px 0; font-size: 13px; color: #1a2e35; line-height: 1.6;
+    }
+    .import-summary b { color: #003237; }
+    .import-warning {
+      background: #fef3c7; border: 1px solid #fde68a; color: #92400e;
+      border-radius: 8px; padding: 10px 14px; margin: 10px 0; font-size: 12px; line-height: 1.5;
+    }
+    .import-table { width: 100%; font-size: 12px; border-collapse: collapse; margin-top: 10px; }
+    .import-table th { text-align: left; padding: 5px 8px; color: #5a7a82; border-bottom: 1px solid #eef2f4; }
+    .import-table td { padding: 5px 8px; border-bottom: 1px solid #f6f8f9; }
+    .import-table-wrap { max-height: 260px; overflow-y: auto; }
+
     .catalog-add-row { display: flex; gap: 8px; margin-bottom: 12px; }
     .catalog-add-row input {
       flex: 1; padding: 8px 11px; border: 1.5px solid #d4dfe2; border-radius: 7px;
@@ -199,6 +215,7 @@
       <div style="display:flex;gap:8px">
         <button class="btn-secondary" id="btnToggleFinished" onclick="toggleHideFinished()">👁 Ocultar finalizados</button>
         <button class="btn-secondary" onclick="openProjectsMgmt()">🗂 Gestionar proyectos</button>
+        <button class="btn-secondary" onclick="openImportModal()">📥 Importar desde Staffing</button>
         <button class="btn-primary" onclick="openProjectModal()">🚀 Nuevo proyecto</button>
         <button class="btn-secondary" id="btnDiscard" onclick="discardChanges()" style="display:none">Descartar</button>
         <button class="btn-primary" id="btnSave" onclick="saveChanges()" disabled>💾 Guardar cambios</button>
@@ -277,6 +294,30 @@
     <div class="catalog-list" id="catalogList"></div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeProjectsMgmt()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal importar presupuesto desde el Sheet viejo de Staffing -->
+<div class="modal-overlay" id="importOverlay">
+  <div class="modal modal-lg">
+    <h3>Importar presupuesto desde Staffing</h3>
+    <p class="import-hint">
+      Trae las horas presupuestadas de la hoja vieja ("Staffing 2025-2026") hacia
+      <code>Dashboard_Data</code>, desde la semana que elijas en adelante. Solo toca
+      <strong>horas presupuestadas</strong> — nunca las horas ejecutadas.
+    </p>
+    <div class="pm-grid" style="grid-template-columns:1fr 1fr">
+      <div class="modal-field"><label>Semana desde</label><input type="number" id="importSemana" min="1" max="53" /></div>
+      <div class="modal-field"><label>Año</label><input type="number" id="importAño" min="2025" max="2030" /></div>
+    </div>
+    <div class="modal-actions" style="justify-content:flex-start">
+      <button class="btn-primary" id="btnAnalyzeImport" onclick="analyzeImport()">🔎 Analizar</button>
+    </div>
+    <div id="importPreview"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeImportModal()">Cerrar</button>
+      <button class="btn-primary" id="btnConfirmImport" onclick="confirmImport()" disabled>✓ Confirmar importación</button>
     </div>
   </div>
 </div>
@@ -768,6 +809,187 @@ async function saveChanges() {
     document.getElementById('savingOverlay').classList.remove('open');
     showToast('⚠️ Error al guardar: ' + err.message, 'error');
   }
+}
+
+// ── Importar presupuesto desde el Sheet viejo de Staffing ─────────────────
+// Migra la planeación anual desde la hoja "Staffing 2025-2026" (formato
+// matricial: colaborador en negrita + filas de proyecto debajo, semanas en
+// columnas) hacia Dashboard_Data. Solo escribe horaspresupuestadas — nunca
+// horasejecutadas, que se siguen reportando en Registro de Horas.
+const STAFFING_LEGACY_ID    = '1fPL_GZfRAH_Jz8hHfvZtPEpxf1dAlJ-8W8JOBgsTw18';
+const STAFFING_LEGACY_SHEET = 'Staffing 2025-2026';
+const STAFFING_LEGACY_ROW_WEEKS = 8; // fila 9 (0-based)
+const STAFFING_LEGACY_ROW_DATA  = 10; // fila 11 (0-based)
+const STAFFING_LEGACY_FIRST_AÑO = 2025; // año del primer bloque de semanas (antes del wrap 52→1)
+
+let pendingImportEntries = null; // [{ colaborador, proyecto, semana, año, horas, existing }]
+let pendingImportUnmatched = [];  // colaboradores del sheet viejo que no existen en matrix
+
+async function fetchStaffingLegacyGrid() {
+  const meta = await gapi.client.sheets.spreadsheets.get({
+    spreadsheetId: STAFFING_LEGACY_ID,
+    ranges: [`'${STAFFING_LEGACY_SHEET}'`],
+    fields: 'sheets(data(rowData(values(formattedValue,effectiveFormat.textFormat.bold))))',
+  });
+  return meta.result.sheets[0].data[0].rowData || [];
+}
+
+function parseStaffingLegacyGrid(grid) {
+  const cellVal = (row, col) => {
+    const v = row && row.values && row.values[col];
+    return v && v.formattedValue !== undefined ? v.formattedValue : null;
+  };
+  const cellBold = (row, col) => {
+    const v = row && row.values && row.values[col];
+    return !!(v && v.effectiveFormat && v.effectiveFormat.textFormat && v.effectiveFormat.textFormat.bold);
+  };
+
+  const weekRow = grid[STAFFING_LEGACY_ROW_WEEKS] || {};
+  const numCols = weekRow.values ? weekRow.values.length : 0;
+
+  // col → {semana, año}. El año se infiere detectando cuándo la secuencia de
+  // semanas "da la vuelta" (ej. 52 → 1), incrementando el año en ese punto.
+  const colToWeek = {};
+  let lastWeekNum = null, año = STAFFING_LEGACY_FIRST_AÑO, activeSemana = null, activeAño = null;
+  for (let col = 1; col < numCols; col++) {
+    const raw = cellVal(weekRow, col);
+    if (raw !== null && raw !== '') {
+      const n = parseInt(raw, 10);
+      if (!isNaN(n)) {
+        if (lastWeekNum !== null && n < lastWeekNum) año++;
+        lastWeekNum = n;
+        activeSemana = n; activeAño = año;
+      }
+    }
+    if (activeSemana !== null) colToWeek[col] = { semana: activeSemana, año: activeAño };
+  }
+
+  const result = [];
+  let currentColaborador = null;
+  for (let r = STAFFING_LEGACY_ROW_DATA; r < grid.length; r++) {
+    const row = grid[r];
+    const nombre = (cellVal(row, 0) || '').toString().trim();
+    if (!nombre) continue;
+    if (cellBold(row, 0)) {
+      currentColaborador = nombre;
+    } else if (currentColaborador) {
+      const proyecto = nombre;
+      for (const colIdxStr in colToWeek) {
+        const { semana, año: añoCol } = colToWeek[colIdxStr];
+        const raw = cellVal(row, parseInt(colIdxStr, 10));
+        if (raw === null || raw === '') continue;
+        const horas = parseFloat(raw);
+        if (isNaN(horas) || horas === 0) continue;
+        result.push({ colaborador: normalizaColaborador(currentColaborador), proyecto, semana, año: añoCol, horas });
+      }
+    }
+  }
+  return result;
+}
+
+function openImportModal() {
+  const cur = getCurrentIsoYearWeek();
+  document.getElementById('importSemana').value = cur.semana;
+  document.getElementById('importAño').value = cur.año;
+  document.getElementById('importPreview').innerHTML = '';
+  document.getElementById('btnConfirmImport').disabled = true;
+  pendingImportEntries = null;
+  pendingImportUnmatched = [];
+  document.getElementById('importOverlay').classList.add('open');
+}
+function closeImportModal() { document.getElementById('importOverlay').classList.remove('open'); }
+
+async function analyzeImport() {
+  const desdeSemana = Number(document.getElementById('importSemana').value) || 1;
+  const desdeAño = Number(document.getElementById('importAño').value) || getCurrentIsoYearWeek().año;
+  const btn = document.getElementById('btnAnalyzeImport');
+  const preview = document.getElementById('importPreview');
+  btn.disabled = true;
+  preview.innerHTML = '<div class="state-msg"><div class="spinner"></div>Leyendo hoja vieja…</div>';
+  document.getElementById('btnConfirmImport').disabled = true;
+
+  try {
+    const grid = await fetchStaffingLegacyGrid();
+    const parsed = parseStaffingLegacyGrid(grid);
+    const desde = { semana: desdeSemana, año: desdeAño };
+    const desdeMonday = getWeekMonday(desde.semana, desde.año).getTime();
+    const filtered = parsed.filter(e => getWeekMonday(e.semana, e.año).getTime() >= desdeMonday);
+
+    const entries = [];
+    const unmatchedSet = new Set();
+    let nNuevas = 0, nActualizar = 0, nSinCambio = 0, horasTotal = 0;
+    const porSemana = {};
+
+    filtered.forEach(e => {
+      const key = semanaAnioKey(e.semana, e.año);
+      const existingCell = matrix[e.colaborador] && matrix[e.colaborador][e.proyecto] && matrix[e.colaborador][e.proyecto][key];
+      if (!matrix[e.colaborador]) unmatchedSet.add(e.colaborador);
+
+      let accion;
+      if (!existingCell) { accion = 'nueva'; nNuevas++; }
+      else if (existingCell.hours !== e.horas) { accion = 'actualizar'; nActualizar++; }
+      else { accion = 'sin_cambio'; nSinCambio++; }
+
+      if (accion !== 'sin_cambio') {
+        entries.push({ ...e, rowIndex: existingCell ? existingCell.rowIndex : null, accion });
+        horasTotal += e.horas;
+        const wk = semanaAnioLabel(e.semana, e.año);
+        porSemana[wk] = (porSemana[wk] || 0) + e.horas;
+      }
+    });
+
+    pendingImportEntries = entries;
+    pendingImportUnmatched = [...unmatchedSet];
+
+    const semanasResumen = Object.entries(porSemana)
+      .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+
+    let html = `<div class="import-summary">
+      Desde <b>${semanaAnioLabel(desde.semana, desde.año)}</b>:
+      <b>${nNuevas}</b> celdas nuevas para crear, <b>${nActualizar}</b> celdas existentes para actualizar,
+      ${nSinCambio} ya estaban iguales (se omiten). Total horas a escribir: <b>${fmt(horasTotal)}</b>.
+    </div>`;
+
+    if (pendingImportUnmatched.length) {
+      html += `<div class="import-warning">⚠️ ${pendingImportUnmatched.length} colaborador(es) del sheet viejo no
+        coinciden con nadie en Roles_Usuarios/Dashboard_Data — revisa si son nombres mal escritos antes de confirmar:
+        <br>${pendingImportUnmatched.map(escAttr).join(', ')}</div>`;
+    }
+
+    if (semanasResumen.length) {
+      html += `<div class="import-table-wrap"><table class="import-table">
+        <thead><tr><th>Semana</th><th style="text-align:right">Horas a escribir</th></tr></thead>
+        <tbody>${semanasResumen.map(([wk, h]) => `<tr><td>${wk}</td><td style="text-align:right">${fmt(h)}</td></tr>`).join('')}</tbody>
+      </table></div>`;
+    } else {
+      html += `<div class="state-msg">No hay celdas nuevas ni por actualizar desde esa semana — ya está todo al día.</div>`;
+    }
+
+    preview.innerHTML = html;
+    document.getElementById('btnConfirmImport').disabled = entries.length === 0;
+  } catch (err) {
+    console.error(err);
+    preview.innerHTML = `<div class="state-msg">⚠️ Error al leer la hoja vieja.<br><small>${err.message}</small></div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function confirmImport() {
+  if (!pendingImportEntries || !pendingImportEntries.length) return;
+  if (!confirm(`Se van a escribir ${pendingImportEntries.length} celdas de horas presupuestadas en Dashboard_Data. ¿Continuar?`)) return;
+
+  pendingImportEntries.forEach(e => {
+    const key = semanaAnioKey(e.semana, e.año);
+    if (!dirtyMatrix[e.colaborador]) dirtyMatrix[e.colaborador] = {};
+    if (!dirtyMatrix[e.colaborador][e.proyecto]) dirtyMatrix[e.colaborador][e.proyecto] = {};
+    dirtyMatrix[e.colaborador][e.proyecto][key] = {
+      hours: e.horas, rowIndex: e.rowIndex, isNew: !e.rowIndex, semana: e.semana, año: e.año,
+    };
+  });
+
+  closeImportModal();
+  await saveChanges();
 }
 
 // ── Modal ─────────────────────────────────────────────────────────────────

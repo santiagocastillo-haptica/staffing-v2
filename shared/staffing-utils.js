@@ -145,6 +145,20 @@ function semanaAnioKey(semana, año) { return `${año}-${semana}`; }
 
 function semanaAnioLabel(semana, año) { return `Sem ${semana} - ${año}`; }
 
+// Igual que semanaAnioLabel pero con el rango de fechas (lun-vie) al lado —
+// para selectores de semana donde no es evidente a qué fecha corresponde
+// cada número, como sí lo es en el Registro de Horas (que muestra mes+fechas
+// en el encabezado de la matriz).
+function semanaAnioLabelConFecha(semana, año) {
+  const mon = getWeekMonday(semana, año);
+  const fri = new Date(mon); fri.setDate(mon.getDate() + 4);
+  const abbr = m => MONTHS_ES[m].slice(0, 3);
+  const rango = mon.getMonth() === fri.getMonth()
+    ? `${mon.getDate()}-${fri.getDate()} ${abbr(mon.getMonth())}`
+    : `${mon.getDate()} ${abbr(mon.getMonth())}-${fri.getDate()} ${abbr(fri.getMonth())}`;
+  return `Sem ${semana} · ${año} (${rango})`;
+}
+
 // ── Rango fijo de semanas a mostrar en toda la app: Ene 2026 a Jul 2027 ────
 const WEEK_RANGE_START = new Date(2026, 0, 1);
 const WEEK_RANGE_END   = new Date(2027, 6, 31);

@@ -320,7 +320,7 @@ async function populateFilters() {
 
   const selSemana = document.getElementById('filterSemana');
   selSemana.innerHTML = '<option value="">— Todas —</option>' +
-    selectableWeeks.map(w => `<option value="${w.key}">${semanaAnioLabel(w.semana, w.año)}</option>`).join('');
+    selectableWeeks.map(w => `<option value="${w.key}">${semanaAnioLabelConFecha(w.semana, w.año)}</option>`).join('');
 
   // Une con Roles_Usuarios para que alguien sin horas todavía (ej. recién asignado)
   // siga apareciendo en el filtro, aunque hoy no tenga nada que mostrar.
