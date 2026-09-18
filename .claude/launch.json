@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "staffing-v2",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["_devserver.js"],
+      "port": 8531
+    }
+  ]
+}
