@@ -30,6 +30,20 @@
     }
     .hide-closed-toggle input { cursor: pointer; }
 
+    .guide-title {
+      margin: 26px 0 10px; font-size: 12px; font-weight: 700;
+      color: #5a7a82; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .guide-title-top { margin-top: 0; }
+    .matrix-guide .presup-cell {
+      background: #fff; padding: 2px 4px; text-align: center;
+      border-bottom: 1px solid #f0f4f5; border-right: 1px solid #f0f4f5;
+      font-size: 12px; font-weight: 600; color: #6b7280;
+    }
+    .matrix-guide .row-project:hover td { background: #f8fbfc; }
+    .matrix-guide .row-project:hover td.col-name, .matrix-guide .row-project:hover td.col-desv { background: #f8fbfc; }
+    .matrix-guide .col-desv { font-weight: 700; color: #374151; }
+
     /* ── Matrix (mismo look de Editar Presupuesto) ─────────── */
     .matrix-wrap { overflow-x: auto; border-radius: 12px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); }
     .matrix { border-collapse: collapse; font-size: 12px; background: #fff; min-width: 100%; }
@@ -196,9 +210,11 @@
         <button class="btn-primary" id="btnSave" onclick="saveChanges()" disabled>💾 Guardar cambios</button>
       </div>
     </div>
+    <div class="guide-title guide-title-top">📝 Registra acá tus horas</div>
     <div id="matrixContainer">
       <div class="state-msg"><div class="spinner"></div>Cargando…</div>
     </div>
+    <div id="presupGuideContainer"></div>
   </div>
 </div>
 
@@ -419,6 +435,27 @@ function effectiveCell(proy, key) {
   };
 }
 
+// Encabezado compartido por la matriz de ejecución y la guía de presupuesto —
+// mismas semanas/meses, solo cambia la etiqueta de la última columna.
+function buildTheadHtml(monthGroups, isCurWeek, lastColLabel) {
+  let thead = '<thead>';
+  thead += '<tr class="row-month"><th class="col-name"></th>';
+  monthGroups.forEach(g => { thead += `<th colspan="${g.count}">${g.label}</th>`; });
+  thead += '<th class="col-desv"></th></tr>';
+
+  thead += '<tr class="row-dates"><th class="col-name"></th>';
+  weekRange.forEach(w => { thead += `<th>${weekDateLabel(w.semana, w.año)}</th>`; });
+  thead += '<th class="col-desv"></th></tr>';
+
+  thead += '<tr class="row-weeks"><th class="col-name"></th>';
+  weekRange.forEach(w => {
+    thead += `<th style="${isCurWeek(w) ? 'background:#FA4616;color:#fff' : ''}">${w.semana}<br><span style="font-size:9px;font-weight:600;opacity:.7">${w.año}</span></th>`;
+  });
+  thead += `<th class="col-desv">${lastColLabel}</th></tr>`;
+  thead += '</thead>';
+  return thead;
+}
+
 // ── Render matrix ─────────────────────────────────────────────────────────
 function renderMatrix() {
   updateDirtyUI();
@@ -438,21 +475,7 @@ function renderMatrix() {
   const curMonday = getWeekMonday(cur.semana, cur.año).getTime();
   const isCurWeek = w => w.semana === cur.semana && w.año === cur.año;
 
-  let thead = '<thead>';
-  thead += '<tr class="row-month"><th class="col-name"></th>';
-  monthGroups.forEach(g => { thead += `<th colspan="${g.count}">${g.label}</th>`; });
-  thead += '<th class="col-desv"></th></tr>';
-
-  thead += '<tr class="row-dates"><th class="col-name"></th>';
-  weekRange.forEach(w => { thead += `<th>${weekDateLabel(w.semana, w.año)}</th>`; });
-  thead += '<th class="col-desv"></th></tr>';
-
-  thead += '<tr class="row-weeks"><th class="col-name"></th>';
-  weekRange.forEach(w => {
-    thead += `<th style="${isCurWeek(w) ? 'background:#FA4616;color:#fff' : ''}">${w.semana}<br><span style="font-size:9px;font-weight:600;opacity:.7">${w.año}</span></th>`;
-  });
-  thead += '<th class="col-desv">Desviación</th></tr>';
-  thead += '</thead>';
+  const thead = buildTheadHtml(monthGroups, isCurWeek, 'Desviación');
 
   const hideClosed = getHideClosed();
   let proyectos = sortProjects(Object.keys(proyectoData));
@@ -509,6 +532,36 @@ function renderMatrix() {
 
   document.getElementById('matrixContainer').innerHTML =
     `<div class="matrix-wrap"><table class="matrix">${thead}${tbody}</table></div>`;
+
+  renderPresupGuide(monthGroups, isCurWeek, proyectos);
+}
+
+// ── Guía de horas presupuestadas (misma estructura, solo lectura) ─────────
+function renderPresupGuide(monthGroups, isCurWeek, proyectos) {
+  const container = document.getElementById('presupGuideContainer');
+  if (!proyectos.length) { container.innerHTML = ''; return; }
+
+  const thead = buildTheadHtml(monthGroups, isCurWeek, 'Total presupuestado');
+  let tbody = '<tbody>';
+  proyectos.forEach(proy => {
+    const cerrado = estadoDe(proy) === 'Cerrado';
+    tbody += `<tr class="row-project${cerrado ? ' proy-cerrado' : ''}">`;
+    tbody += `<td class="col-name"><div class="proy-name-cell"><span class="proy-name-text">${proy}</span></div></td>`;
+    let totalPresup = 0;
+    weekRange.forEach(w => {
+      const cell = effectiveCell(proy, w.key);
+      totalPresup += cell.presup;
+      tbody += `<td class="presup-cell" style="${isCurWeek(w) ? 'background:#fffaf8' : ''}">${cell.presup || ''}</td>`;
+    });
+    tbody += `<td class="col-desv">${fmt(totalPresup)}</td>`;
+    tbody += '</tr>';
+  });
+  tbody += '</tbody>';
+
+  container.innerHTML = `
+    <div class="guide-title">📎 Staffing - Horas Presupuestadas</div>
+    <div class="matrix-wrap"><table class="matrix matrix-guide">${thead}${tbody}</table></div>
+  `;
 }
 
 // ── Cell change ───────────────────────────────────────────────────────────
