@@ -66,6 +66,8 @@
     tr.row-critical { background: #fee2e2; }
     tr.row-alerta:hover { background: #fee2e2; }
     tr.row-alerta td:first-child { border-left: 3px solid #dc2626; }
+    .col-total { border-left: 2px solid #e5edf0; background: #f8fbfc; }
+    tr:hover td.col-total { background: #eef4f6; }
 
     /* ── Chart toggle ───────────────────────────── */
     .toggle-group { display: flex; background: #eef2f4; border-radius: 8px; padding: 3px; gap: 2px; }
@@ -511,6 +513,17 @@ function renderTable(data) {
 
   const grouped = Object.values(map).sort((a, b) => a.proyecto.localeCompare(b.proyecto) || a.colaborador.localeCompare(b.colaborador));
 
+  // Totales históricos por proyecto+colaborador (todas las semanas, respetando
+  // los demás filtros pero NO el de semana) — para mostrar el total del
+  // proyecto sin importar qué semana puntual se esté mirando en la tabla.
+  const totalsMap = {};
+  allData.filter(passesCommonFilters).forEach(r => {
+    const key = (r.proyecto || '') + '||' + (r.colaborador || '');
+    if (!totalsMap[key]) totalsMap[key] = { presup: 0, ejec: 0 };
+    totalsMap[key].presup += r.horaspresupuestadas || 0;
+    totalsMap[key].ejec += r.horasejecutadas || 0;
+  });
+
   const calcEstado = (presup, ejec) => {
     if (!presup) return { label: '—', cls: 'pill-warning', rowCls: '' };
     const ratio = ejec / presup;
@@ -524,6 +537,9 @@ function renderTable(data) {
     const desv = r.ejec - r.presup;
     const cls = desv >= 0 ? 'num-neg' : 'num-pos';
     const estado = calcEstado(r.presup, r.ejec);
+    const tot = totalsMap[(r.proyecto || '') + '||' + (r.colaborador || '')] || { presup: 0, ejec: 0 };
+    const totDesv = tot.ejec - tot.presup;
+    const totCls = totDesv >= 0 ? 'num-neg' : 'num-pos';
     return `<tr class="${estado.rowCls}">
       <td>${r.proyecto}</td>
       <td>${r.colaborador}</td>
@@ -531,12 +547,21 @@ function renderTable(data) {
       <td style="text-align:right">${fmt(r.ejec)}</td>
       <td style="text-align:right" class="${cls}">${(desv >= 0 ? '+' : '') + fmt(desv)}</td>
       <td><span class="pill ${estado.cls}">${estado.label}</span></td>
+      <td class="col-total" style="text-align:right">${fmt(tot.presup)}</td>
+      <td class="col-total" style="text-align:right">${fmt(tot.ejec)}</td>
+      <td class="col-total ${totCls}" style="text-align:right">${(totDesv >= 0 ? '+' : '') + fmt(totDesv)}</td>
     </tr>`;
   }).join('');
 
   container.innerHTML = `
     <table>
-      <thead><tr><th>Proyecto</th><th>Colaborador</th><th style="text-align:right">Presupuestadas</th><th style="text-align:right">Ejecutadas</th><th style="text-align:right">Desviación</th><th>Estado</th></tr></thead>
+      <thead><tr>
+        <th>Proyecto</th><th>Colaborador</th>
+        <th style="text-align:right">Presupuestadas</th><th style="text-align:right">Ejecutadas</th><th style="text-align:right">Desviación</th><th>Estado</th>
+        <th class="col-total" style="text-align:right">Presup. total proyecto</th>
+        <th class="col-total" style="text-align:right">Ejec. total proyecto</th>
+        <th class="col-total" style="text-align:right">Desv. total proyecto</th>
+      </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
