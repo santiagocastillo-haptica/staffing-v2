@@ -198,10 +198,10 @@ async function loadSolicitudes() {
   });
   const rows = res.result.values || [];
   solicitudes = [];
-  if (rows.length < 2) { solHeaders = rows[0] ? rows[0].map(h => h.trim().toLowerCase()) : []; return; }
-  solHeaders = rows[0].map(h => h.trim().toLowerCase());
+  solHeaders = rows[0] ? rows[0].map(h => h.trim().toLowerCase()) : [];
   solColIdx = {};
   solHeaders.forEach((h, i) => { solColIdx[h] = i; });
+  if (rows.length < 2) return; // encabezados sin filas de datos todavía — nada que parsear
   solicitudes = rows.slice(1).map((r, i) => ({
     _row: i + 2,
     hiloId: r[solColIdx['hiloid']] || '',
