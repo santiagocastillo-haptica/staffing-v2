@@ -24,6 +24,12 @@
     }
     .view-range select:focus { outline: none; border-color: #003237; }
 
+    .hide-closed-toggle {
+      display: flex; align-items: center; gap: 6px; cursor: pointer;
+      font-size: 12px; font-weight: 600; color: #5a7a82; user-select: none;
+    }
+    .hide-closed-toggle input { cursor: pointer; }
+
     /* ── Matrix (mismo look de Editar Presupuesto) ─────────── */
     .matrix-wrap { overflow-x: auto; border-radius: 12px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); }
     .matrix { border-collapse: collapse; font-size: 12px; background: #fff; min-width: 100%; }
@@ -181,7 +187,11 @@
           </select>
         </div>
       </div>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:14px;align-items:center">
+        <label class="hide-closed-toggle">
+          <input type="checkbox" id="chkHideClosed" onchange="onHideClosedChange(this.checked)" />
+          Ocultar proyectos cerrados
+        </label>
         <button class="btn-secondary" id="btnDiscard" onclick="discardChanges()" style="display:none">Descartar</button>
         <button class="btn-primary" id="btnSave" onclick="saveChanges()" disabled>💾 Guardar cambios</button>
       </div>
@@ -238,6 +248,13 @@ function getViewRange() {
 function onViewRangeChange(mode) {
   localStorage.setItem(VIEW_RANGE_KEY, mode);
   buildWeekRange();
+  renderMatrix();
+}
+
+const HIDE_CLOSED_KEY = 'timeReportHideClosed';
+function getHideClosed() { return localStorage.getItem(HIDE_CLOSED_KEY) === '1'; }
+function onHideClosedChange(checked) {
+  localStorage.setItem(HIDE_CLOSED_KEY, checked ? '1' : '0');
   renderMatrix();
 }
 
@@ -437,11 +454,16 @@ function renderMatrix() {
   thead += '<th class="col-desv">Desviación</th></tr>';
   thead += '</thead>';
 
-  const proyectos = sortProjects(Object.keys(proyectoData));
+  const hideClosed = getHideClosed();
+  let proyectos = sortProjects(Object.keys(proyectoData));
+  if (hideClosed) proyectos = proyectos.filter(p => estadoDe(p) !== 'Cerrado');
   let tbody = '<tbody>';
 
   if (!proyectos.length) {
-    tbody += `<tr><td class="col-name" colspan="${weekRange.length + 2}" style="text-align:center;color:#9ca3af;padding:20px">Todavía no tienes proyectos asignados.</td></tr>`;
+    const msg = hideClosed && Object.keys(proyectoData).length
+      ? 'Todos tus proyectos están cerrados. Desmarca "Ocultar proyectos cerrados" para verlos.'
+      : 'Todavía no tienes proyectos asignados.';
+    tbody += `<tr><td class="col-name" colspan="${weekRange.length + 2}" style="text-align:center;color:#9ca3af;padding:20px">${msg}</td></tr>`;
   }
 
   proyectos.forEach(proy => {
@@ -633,6 +655,7 @@ function showToast(msg, type = '') {
 }
 
 document.getElementById('viewRangeSelect').value = getViewRange();
+document.getElementById('chkHideClosed').checked = getHideClosed();
 
 HapticaAuth.init({
   requiredView: 'time-report',
