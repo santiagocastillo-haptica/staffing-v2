@@ -20,6 +20,8 @@ const NOMBRE_MAP = {
   'Ma Camila Venegas':     'María Camila Venegas',
   'Ma Fernanda Martinez':  'María Fernanda Martínez',
   'Maria Laura Patiño':    'María Laura Patiño',
+  'Maria Alejandra Mariño': 'María Alejandra Mariño',
+  'Maria Paz Hernández':    'María Paz Hernández',
 };
 
 const PROJECT_FIXED_ORDER = ['ADM-01', 'ADM-02', 'COM', 'OPS'];
