@@ -36,6 +36,28 @@
     .rf-input.changed { border-color: #f59e0b; background: #fffbeb; }
     .rf-readonly { font-weight: 600; color: #1a2e35; }
 
+    /* ── Encabezado de semanas (mismo formato que Registro de Horas) ────── */
+    table.rf-table { overflow: hidden; border-radius: 8px; }
+    table.rf-table thead th { padding: 0; text-align: center; border-bottom: none; }
+    table.rf-table thead th:first-child { text-align: left; }
+    table.rf-table .rf-row-month th {
+      background: #1a2e35; color: rgba(255,255,255,0.4);
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.8px; padding: 7px 4px; border-right: 1px solid #2d4350;
+    }
+    table.rf-table .rf-row-dates th {
+      background: #243b44; color: rgba(255,255,255,0.5);
+      font-size: 10px; font-weight: 500; padding: 4px 4px; border-right: 1px solid #2d4350;
+    }
+    table.rf-table .rf-row-weeks th {
+      background: #1a2e35; color: #fff;
+      font-size: 13px; font-weight: 800; padding: 6px 4px;
+      border-right: 1px solid #2d4350; min-width: 52px;
+    }
+    table.rf-table .rf-row-weeks th:first-child, table.rf-table .rf-row-weeks th.rf-th-total { text-transform: uppercase; font-size: 10px; letter-spacing: 0.4px; }
+    table.rf-table .rf-row-weeks .rf-year { font-size: 9px; font-weight: 600; opacity: 0.7; display: block; }
+    table.rf-table .rf-row-weeks th.rf-th-current { background: #FA4616; }
+
     .turn-banner {
       display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
       background: #e8f4f5; border: 1px solid #c2dfe2; border-radius: 8px; padding: 10px 16px; margin-bottom: 14px;
@@ -271,6 +293,44 @@ function weeksForDisplay(equipoMatrix, threadHoras) {
   return [...keys].map(parseWeekKeyLocal).sort((a, b) => a.monday - b.monday);
 }
 
+// Encabezado de 3 filas (mes / fechas / semana) — mismo formato visual que
+// la matriz de Registro de Horas, para que ambas vistas se lean igual.
+function buildWeeksTheadHtml(weeks, lastColLabel) {
+  const monthGroups = [];
+  weeks.forEach(w => {
+    const { month, year } = weekMonthYear(w.semana, w.año);
+    const gkey = `${year}-${month}`;
+    if (!monthGroups.length || monthGroups[monthGroups.length - 1].gkey !== gkey) {
+      monthGroups.push({ gkey, label: MONTHS_ES[month], count: 1 });
+    } else {
+      monthGroups[monthGroups.length - 1].count++;
+    }
+  });
+  const cur = getCurrentIsoYearWeek();
+  const isCurWeek = w => w.semana === cur.semana && w.año === cur.año;
+  const hasExtraCol = lastColLabel !== undefined;
+
+  let thead = '<thead>';
+  thead += '<tr class="rf-row-month"><th></th>';
+  monthGroups.forEach(g => { thead += `<th colspan="${g.count}">${g.label}</th>`; });
+  if (hasExtraCol) thead += '<th></th>';
+  thead += '</tr>';
+
+  thead += '<tr class="rf-row-dates"><th></th>';
+  weeks.forEach(w => { thead += `<th>${weekDateLabel(w.semana, w.año)}</th>`; });
+  if (hasExtraCol) thead += '<th></th>';
+  thead += '</tr>';
+
+  thead += '<tr class="rf-row-weeks"><th>Persona</th>';
+  weeks.forEach(w => {
+    thead += `<th class="${isCurWeek(w) ? 'rf-th-current' : ''}">${w.semana}<span class="rf-year">${w.año}</span></th>`;
+  });
+  if (hasExtraCol) thead += `<th class="rf-th-total">${lastColLabel}</th>`;
+  thead += '</tr>';
+  thead += '</thead>';
+  return thead;
+}
+
 function latestForProject(proyecto) {
   const rows = solicitudes.filter(s => s.proyecto === proyecto).sort((a, b) => a.turno - b.turno);
   return rows.length ? rows[rows.length - 1] : null;
@@ -337,7 +397,7 @@ function renderEquipoYVenta() {
 
   const table = document.getElementById('equipoTable');
   if (!personas.length) { table.innerHTML = ''; return; }
-  const thead = '<thead><tr><th>Persona</th>' + weeks.map(w => `<th>${semanaAnioLabel(w.semana, w.año)}</th>`).join('') + '<th>Total</th></tr></thead>';
+  const thead = buildWeeksTheadHtml(weeks, 'Total');
   const tbody = personas.map(p => {
     const cells = weeks.map(w => `<td>${fmt(equipoMatrix[p][w.key] || 0)}</td>`).join('');
     const total = weeks.reduce((a, w) => a + (equipoMatrix[p][w.key] || 0), 0);
@@ -385,7 +445,7 @@ function renderModificacion() {
     return equipoMatrix[p][wk] || 0;
   };
 
-  const thead = '<thead><tr><th>Persona</th>' + weeks.map(w => `<th>${semanaAnioLabel(w.semana, w.año)}</th>`).join('') + '</tr></thead>';
+  const thead = buildWeeksTheadHtml(weeks);
   const tbody = personas.map(p => {
     const cells = weeks.map(w => {
       const val = valueFor(p, w.key);
