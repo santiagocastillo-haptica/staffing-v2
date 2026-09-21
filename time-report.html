@@ -193,7 +193,7 @@
         <div class="view-range">
           <label for="viewRangeSelect">Ver</label>
           <select id="viewRangeSelect" onchange="onViewRangeChange(this.value)">
-            <option value="week">Solo semana actual</option>
+            <option value="week">Semana actual y anterior</option>
             <option value="month">Corte mensual</option>
             <option value="quarter">Corte trimestral</option>
             <option value="semester">Corte semestral</option>
@@ -388,8 +388,10 @@ function buildWeekRange() {
   const full = getFullWeekRange();
   const cur = getCurrentIsoYearWeek();
   const curMonday = getWeekMonday(cur.semana, cur.año).getTime();
-  // Requisito: nunca mostrar semanas anteriores a la semana actual.
-  let range = full.filter(w => w.monday >= curMonday);
+  // La semana pasada se mantiene visible (para poder cerrar su registro los
+  // primeros días de la semana siguiente) — nunca se muestra nada anterior a eso.
+  const startMonday = curMonday - 7 * 86400000;
+  let range = full.filter(w => w.monday >= startMonday);
 
   const mode = getViewRange();
   const cutoff = getViewRangeCutoff(mode, cur.semana, cur.año);
