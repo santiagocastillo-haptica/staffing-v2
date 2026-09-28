@@ -34,6 +34,8 @@
     }
     .rf-input:focus { outline: none; border-color: #003237; }
     .rf-input.changed { border-color: #f59e0b; background: #fffbeb; }
+    .rf-input::-webkit-inner-spin-button, .rf-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    .rf-input[type=number] { -moz-appearance: textfield; }
     .rf-readonly { font-weight: 600; color: #1a2e35; }
 
     /* ── Encabezado de semanas (mismo formato que Registro de Horas) ────── */
@@ -168,7 +170,7 @@ async function loadAll() {
     renderPendingPanel();
   } catch (err) {
     console.error(err);
-    showToast('⚠️ Error al cargar datos: ' + err.message, 'error');
+    showToast('⚠️ Error al cargar datos: ' + errMsg(err), 'error');
   }
 }
 
@@ -282,14 +284,21 @@ function parseWeekKeyLocal(key) {
   return { semana, año, key, monday: getWeekMonday(semana, año).getTime() };
 }
 
+// Máximo 2 semanas antes de la actual + las próximas — para no llenar la
+// tabla de columnas con todo el histórico de horas del equipo. Una
+// negociación activa (threadHoras) se mantiene visible aunque quede fuera
+// de esa ventana, para no esconder una propuesta pendiente de responder.
+const REFORECAST_WEEKS_BACK    = 2;
+const REFORECAST_WEEKS_FORWARD = 8;
+
 function weeksForDisplay(equipoMatrix, threadHoras) {
-  const keys = new Set();
-  Object.values(equipoMatrix).forEach(wk => Object.keys(wk).forEach(k => keys.add(k)));
-  Object.keys(threadHoras || {}).forEach(k => keys.add(k.split('|')[1]));
   const cur = getCurrentIsoYearWeek();
   const full = getFullWeekRange();
   const curIdx = full.findIndex(w => w.semana === cur.semana && w.año === cur.año);
-  full.slice(Math.max(0, curIdx), curIdx + 8).forEach(w => keys.add(w.key));
+  const ventana = full.slice(Math.max(0, curIdx - REFORECAST_WEEKS_BACK), curIdx + REFORECAST_WEEKS_FORWARD);
+
+  const keys = new Set(ventana.map(w => w.key));
+  Object.keys(threadHoras || {}).forEach(k => keys.add(k.split('|')[1]));
   return [...keys].map(parseWeekKeyLocal).sort((a, b) => a.monday - b.monday);
 }
 
@@ -450,7 +459,7 @@ function renderModificacion() {
     const cells = weeks.map(w => {
       const val = valueFor(p, w.key);
       return canAct
-        ? `<td><input class="rf-input" type="number" min="0" step="0.5" value="${val || ''}" data-persona="${escAttr(p)}" data-week="${w.key}" /></td>`
+        ? `<td><input class="rf-input" type="number" min="0" step="1" inputmode="numeric" value="${val || ''}" data-persona="${escAttr(p)}" data-week="${w.key}" oninput="this.value = this.value.replace(/[^0-9]/g,'')" /></td>`
         : `<td class="rf-readonly">${fmt(val)}</td>`;
     }).join('');
     return `<tr><td class="rf-name">${p}</td>${cells}</tr>`;
@@ -513,7 +522,7 @@ async function submitTurn(lado, horasMap) {
     onProyectoChange();
   } catch (err) {
     console.error(err);
-    showToast('⚠️ Error al enviar: ' + err.message, 'error');
+    showToast('⚠️ Error al enviar: ' + errMsg(err), 'error');
   }
 }
 
@@ -541,7 +550,7 @@ async function aprobarSolicitud() {
     onProyectoChange();
   } catch (err) {
     console.error(err);
-    showToast('⚠️ Error al aprobar: ' + err.message, 'error');
+    showToast('⚠️ Error al aprobar: ' + errMsg(err), 'error');
   }
 }
 

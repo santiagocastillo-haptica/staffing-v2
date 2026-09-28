@@ -75,6 +75,73 @@
     .toggle-btn.active { background: #fff; color: #003237; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 
     @media (max-width: 700px) { .kpi-row { grid-template-columns: 1fr; } }
+
+    /* ── Tabs de vista principal (Dashboard / Vista Clásica) ────────────── */
+    .view-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+    .view-tab-btn {
+      padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer;
+      font-family: inherit; font-size: 13px; font-weight: 600;
+      color: #5a7a82; background: #eef2f4; transition: all 0.15s;
+    }
+    .view-tab-btn.active { background: #003237; color: #fff; }
+
+    /* ── Vista Clásica (mismo look de Editar Presupuesto) ───────────────── */
+    .clasico-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    .clasico-toolbar-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    /* max-height + overflow-y: para que el thead (sticky) tenga un contenedor
+       que realmente se desplaza verticalmente dentro de sí mismo — si solo
+       hubiera overflow-x, matrix-wrap nunca desarrolla scroll propio y el
+       sticky no tiene contra qué fijarse. */
+    .matrix-wrap { overflow-x: auto; overflow-y: auto; max-height: calc(100vh - 260px); border-radius: 12px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); }
+    .matrix { border-collapse: collapse; font-size: 12px; background: #fff; min-width: 100%; }
+    .matrix .col-name {
+      position: sticky; left: 0; z-index: 2;
+      background: #fff; min-width: 180px; max-width: 200px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .matrix thead .col-name { background: #1a2e35; z-index: 4; }
+    /* El top exacto de cada fila del thead se calcula en JS (applyStickyHeaderRows) */
+    .matrix thead tr th { padding: 0; text-align: center; font-weight: 600; white-space: nowrap; position: sticky; z-index: 3; }
+    .row-month th {
+      background: #1a2e35; color: rgba(255,255,255,0.7);
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.8px; padding: 7px 4px; border-right: 1px solid #2d4350;
+    }
+    .row-month th.col-name { color: rgba(255,255,255,0.4); font-size: 10px; }
+    .row-dates th {
+      background: #243b44; color: rgba(255,255,255,0.5);
+      font-size: 10px; font-weight: 500; padding: 4px 4px; border-right: 1px solid #2d4350;
+    }
+    .row-weeks th {
+      background: #1a2e35; color: #fff;
+      font-size: 13px; font-weight: 800; padding: 6px 4px;
+      border-right: 1px solid #2d4350; min-width: 52px;
+    }
+    .row-cap th {
+      background: #f0f4f5; color: #5a7a82;
+      font-size: 11px; font-weight: 600; padding: 5px 4px;
+      border-right: 1px solid #e2e8ea; border-bottom: 2px solid #d4dfe2;
+    }
+    .row-cap th.col-name { text-align: left; padding-left: 12px; color: #9ca3af; font-size: 10px; }
+    .row-person td {
+      background: #eef6f7; font-weight: 700; font-size: 12px;
+      color: #003237; padding: 7px 4px; border-bottom: 1px solid #d4dfe2; text-align: center;
+    }
+    .row-person td.col-name { text-align: left; padding-left: 12px; font-size: 13px; border-right: 2px solid #003237; }
+    .row-clasico-project td {
+      background: #fff; padding: 4px; color: #374151; font-weight: 600;
+      border-bottom: 1px solid #f0f4f5; border-right: 1px solid #f0f4f5; text-align: center;
+    }
+    .row-clasico-project td.col-name {
+      text-align: left; padding-left: 22px; font-size: 12px;
+      color: #374151; font-weight: 500; border-right: 2px solid #003237;
+    }
+    .row-clasico-project:hover td { background: #f8fbfc; }
+    .pct-cell { font-size: 11px; font-weight: 700; }
+    .pct-low  { color: #059669; }
+    .pct-ok   { color: #003237; }
+    .pct-warn { color: #d97706; }
+    .pct-over { color: #dc2626; background: #fee2e2 !important; border-radius: 4px; padding: 1px 4px; }
   </style>
 </head>
 <body>
@@ -106,6 +173,12 @@
 <div id="app">
   <div class="content">
 
+    <div class="view-tabs">
+      <button class="view-tab-btn active" data-view="dashboard" onclick="setMainView('dashboard')">📊 Dashboard</button>
+      <button class="view-tab-btn" data-view="clasico" onclick="setMainView('clasico')">🗂 Vista Clásica</button>
+    </div>
+
+    <div id="dashboardView">
     <div class="filters">
       <div class="filter-group">
         <label>Semana</label>
@@ -196,6 +269,19 @@
       <h2>Detalle por proyecto</h2>
       <div id="tableContainer"><div class="state-msg"><div class="spinner"></div>Cargando…</div></div>
     </div>
+    </div> <!-- /dashboardView -->
+
+    <div id="clasicoView" style="display:none">
+      <div class="clasico-toolbar">
+        <div class="clasico-toolbar-left">
+          <div class="update-notice" id="clasicoUpdateNotice">Cargando datos…</div>
+        </div>
+        <button class="btn-secondary" id="btnToggleFinishedClasico" onclick="toggleHideFinishedClasico()">👁 Ocultar finalizados</button>
+      </div>
+      <div id="clasicoMatrixContainer">
+        <div class="state-msg"><div class="spinner"></div>Cargando…</div>
+      </div>
+    </div>
 
   </div>
 </div>
@@ -214,6 +300,14 @@ let trendChartInstance = null;
 let chartDim = 'colaborador';
 let misPersona = null;
 let misEquiposOnly = false;
+
+let currentMainView = 'dashboard';
+let clasicoLoaded = false;
+let matrixClasico = {}; // matrixClasico[colaborador][proyecto][key] = { hours }
+let weekRangeClasico = [];
+let hideFinishedClasico = false;
+let proyectoEstadoClasico    = {}; // { [proyecto]: 'Activo' | 'Cerrado' }
+let proyectosRowIndexClasico = {};
 
 async function loadData() {
   document.getElementById('tableContainer').innerHTML =
@@ -269,7 +363,7 @@ async function loadData() {
   } catch (err) {
     console.error(err);
     document.getElementById('tableContainer').innerHTML =
-      `<div class="state-msg">⚠️ No se pudo cargar la información.<br><small>${err.message}</small></div>`;
+      `<div class="state-msg">⚠️ No se pudo cargar la información.<br><small>${errMsg(err)}</small></div>`;
   }
 }
 
@@ -625,6 +719,177 @@ function updateDashboard() {
 
   const trendData = allData.filter(r => passesCommonFilters(r));
   renderTrend(trendData);
+}
+
+// ── Vista Clásica (fusionada desde el sistema viejo) ────────────────────────
+// Reutiliza los mismos allData/configMap ya cargados por el dashboard — solo
+// agrega el catálogo de Proyectos (Activo/Cerrado) y Roles_Usuarios la
+// primera vez que se abre esta pestaña.
+function setMainView(view) {
+  currentMainView = view;
+  document.getElementById('dashboardView').style.display = view === 'dashboard' ? '' : 'none';
+  document.getElementById('clasicoView').style.display = view === 'clasico' ? '' : 'none';
+  document.querySelectorAll('.view-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  if (view === 'clasico' && !clasicoLoaded) loadClasicoView();
+}
+
+async function loadClasicoView() {
+  clasicoLoaded = true;
+  document.getElementById('clasicoMatrixContainer').innerHTML =
+    '<div class="state-msg"><div class="spinner"></div>Cargando datos…</div>';
+  try {
+    const [todasLasPersonas] = await Promise.all([fetchAllPersonas(), loadProyectosCatalogClasico()]);
+    buildMatrixClasico(todasLasPersonas);
+    weekRangeClasico = getFullWeekRange();
+    renderMatrixClasico();
+    document.getElementById('clasicoUpdateNotice').textContent = document.getElementById('updateNotice').textContent;
+  } catch (err) {
+    console.error(err);
+    document.getElementById('clasicoMatrixContainer').innerHTML =
+      `<div class="state-msg">⚠️ Error al cargar datos.<br><small>${errMsg(err)}</small></div>`;
+  }
+}
+
+function buildMatrixClasico(todasLasPersonas) {
+  matrixClasico = {};
+  (todasLasPersonas || []).forEach(persona => { matrixClasico[persona] = {}; });
+  allData.forEach(r => {
+    const col  = r.colaborador;
+    const proy = r.proyecto || '—';
+    const key  = semanaAnioKey(r.semana, r.año);
+    if (!matrixClasico[col]) matrixClasico[col] = {};
+    if (!matrixClasico[col][proy]) matrixClasico[col][proy] = {};
+    matrixClasico[col][proy][key] = { hours: r.horaspresupuestadas };
+  });
+}
+
+async function loadProyectosCatalogClasico() {
+  proyectoEstadoClasico = {};
+  proyectosRowIndexClasico = {};
+  try {
+    const res = await gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_PROYECTOS,
+    });
+    const rows = res.result.values || [];
+    if (rows.length < 2) return;
+    const h = rows[0].map(x => x.trim().toLowerCase());
+    const iProy = h.indexOf('proyecto');
+    const iEstado = h.indexOf('estado');
+    if (iProy === -1) return;
+    rows.slice(1).forEach((r, i) => {
+      const name = (r[iProy] || '').trim();
+      if (!name) return;
+      proyectoEstadoClasico[name] = (r[iEstado] || '').trim() || 'Activo';
+      proyectosRowIndexClasico[name] = i + 2;
+    });
+  } catch (e) { /* pestaña Proyectos opcional */ }
+}
+
+function projectHasAnyHoursClasico(col, proy) {
+  const persisted = (matrixClasico[col] && matrixClasico[col][proy]) ? Object.values(matrixClasico[col][proy]) : [];
+  return persisted.some(c => c && c.hours > 0);
+}
+
+function shouldHideProjectClasico(col, proy) {
+  if (proyectoEstadoClasico[proy] === 'Cerrado') return true;
+  return !projectHasAnyHoursClasico(col, proy);
+}
+
+function toggleHideFinishedClasico() {
+  hideFinishedClasico = !hideFinishedClasico;
+  document.getElementById('btnToggleFinishedClasico').textContent = hideFinishedClasico ? '👁 Ver finalizados' : '👁 Ocultar finalizados';
+  renderMatrixClasico();
+}
+
+function renderMatrixClasico() {
+  const monthGroups = [];
+  weekRangeClasico.forEach(w => {
+    const { month, year } = weekMonthYear(w.semana, w.año);
+    const gkey = `${year}-${month}`;
+    if (!monthGroups.length || monthGroups[monthGroups.length - 1].gkey !== gkey) {
+      monthGroups.push({ gkey, label: MONTHS_ES[month], count: 1 });
+    } else {
+      monthGroups[monthGroups.length - 1].count++;
+    }
+  });
+
+  const cur = getCurrentIsoYearWeek();
+  const isCurWeek = w => w.semana === cur.semana && w.año === cur.año;
+
+  let thead = '<thead>';
+  thead += '<tr class="row-month"><th class="col-name"></th>';
+  monthGroups.forEach(g => { thead += `<th colspan="${g.count}">${g.label}</th>`; });
+  thead += '</tr>';
+
+  thead += '<tr class="row-dates"><th class="col-name"></th>';
+  weekRangeClasico.forEach(w => { thead += `<th>${weekDateLabel(w.semana, w.año)}</th>`; });
+  thead += '</tr>';
+
+  thead += '<tr class="row-weeks"><th class="col-name"></th>';
+  weekRangeClasico.forEach(w => {
+    thead += `<th style="${isCurWeek(w) ? 'background:#FA4616;color:#fff' : ''}">${w.semana}<br><span style="font-size:9px;font-weight:600;opacity:.7">${w.año}</span></th>`;
+  });
+  thead += '</tr>';
+
+  thead += '<tr class="row-cap"><th class="col-name">Capacidad equipo</th>';
+  weekRangeClasico.forEach(w => {
+    const pct = capPct(cfgKeyFor(w.semana, w.año), configMap);
+    thead += `<th><span class="pct-cell ${pctClass(pct)}">${fmtPct(pct)}</span></th>`;
+  });
+  thead += '</tr>';
+  thead += '</thead>';
+
+  const colaboradores = Object.keys(matrixClasico).sort();
+  let tbody = '<tbody>';
+
+  colaboradores.forEach(col => {
+    let proyectos = sortProjects(Object.keys(matrixClasico[col]));
+    if (hideFinishedClasico) {
+      proyectos = proyectos.filter(proy => !shouldHideProjectClasico(col, proy));
+      if (!proyectos.length) return;
+    }
+
+    tbody += `<tr class="row-person">`;
+    tbody += `<td class="col-name">${col}</td>`;
+    weekRangeClasico.forEach(w => {
+      const totalHrs = Object.values(matrixClasico[col]).reduce((sum, proy) => sum + (proy[w.key] ? proy[w.key].hours : 0), 0);
+      const cap = 40 * capPct(cfgKeyFor(w.semana, w.año), configMap);
+      const pct = cap > 0 ? totalHrs / cap : (totalHrs > 0 ? 1 : null);
+      tbody += `<td style="${isCurWeek(w) ? 'background:#fff3ee' : ''}">
+        ${totalHrs > 0 ? `<span class="pct-cell ${pctClass(pct)}">${fmtPct(pct)}</span>` : ''}
+      </td>`;
+    });
+    tbody += '</tr>';
+
+    proyectos.forEach(proy => {
+      tbody += `<tr class="row-clasico-project">`;
+      tbody += `<td class="col-name">${proy}</td>`;
+      weekRangeClasico.forEach(w => {
+        const cell = matrixClasico[col][proy][w.key];
+        tbody += `<td style="${isCurWeek(w) ? 'background:#fffaf8' : ''}">${cell && cell.hours ? fmt(cell.hours) : ''}</td>`;
+      });
+      tbody += '</tr>';
+    });
+  });
+
+  tbody += '</tbody>';
+
+  document.getElementById('clasicoMatrixContainer').innerHTML = `
+    <div class="matrix-wrap">
+      <table class="matrix">${thead}${tbody}</table>
+    </div>`;
+  applyStickyHeaderRows('clasicoMatrixContainer');
+}
+
+// Fija cada fila del thead (mes/fechas/semana/capacidad) en su offset exacto
+// para que el bloque completo quede inmóvil al hacer scroll vertical.
+function applyStickyHeaderRows(containerId) {
+  const rows = document.querySelectorAll(`#${containerId} thead tr`);
+  let top = 0;
+  rows.forEach(row => {
+    row.querySelectorAll('th').forEach(th => { th.style.top = `${top}px`; });
+    top += row.getBoundingClientRect().height;
+  });
 }
 
 HapticaAuth.init({

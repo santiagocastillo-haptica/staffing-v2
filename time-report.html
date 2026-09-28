@@ -117,7 +117,8 @@
     .hrs-input:hover { border-color: #d4dfe2; background: #fff; }
     .hrs-input:focus { outline: none; border-color: #003237; background: #fff; }
     .hrs-input.changed { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
-    .hrs-input::-webkit-inner-spin-button, .hrs-input::-webkit-outer-spin-button { opacity: 0.4; }
+    .hrs-input::-webkit-inner-spin-button, .hrs-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    .hrs-input[type=number] { -moz-appearance: textfield; }
 
     .pill { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; white-space: nowrap; }
     .pill-ok       { background: #d1fae5; color: #065f46; }
@@ -310,7 +311,7 @@ async function loadData() {
   } catch (err) {
     console.error(err);
     document.getElementById('matrixContainer').innerHTML =
-      `<div class="state-msg">⚠️ Error al cargar datos.<br><small>${err.message}</small></div>`;
+      `<div class="state-msg">⚠️ Error al cargar datos.<br><small>${errMsg(err)}</small></div>`;
   }
 }
 
@@ -380,7 +381,7 @@ async function toggleProyectoEstado(proy) {
     console.error(err);
     proyectoEstado[proy] = nuevoEstado === 'Cerrado' ? 'Activo' : 'Cerrado'; // revertir
     renderMatrix();
-    showToast('⚠️ No se pudo guardar el estado: ' + err.message, 'error');
+    showToast('⚠️ No se pudo guardar el estado: ' + errMsg(err), 'error');
   }
 }
 
@@ -512,10 +513,11 @@ function renderMatrix() {
       const dirty = dirtyMatrix[proy] && dirtyMatrix[proy][w.key] !== undefined;
       const cls = ['hrs-input', dirty ? 'changed' : ''].filter(Boolean).join(' ');
       tbody += `<td style="${isCurWeek(w) ? 'background:#fffaf8' : ''}">
-        <input class="${cls}" type="number" min="0" step="0.5"
+        <input class="${cls}" type="number" min="0" step="1" inputmode="numeric"
           value="${cell.ejec || ''}" placeholder="" ${cerrado ? 'disabled' : ''}
           data-proy="${escAttr(proy)}" data-week="${w.key}" data-semana="${w.semana}" data-anio="${w.año}"
           data-rowindex="${cell.rowIndex || ''}"
+          oninput="this.value = this.value.replace(/[^0-9]/g,'')"
           onchange="onCellChange(this)" />
       </td>`;
     });
@@ -663,11 +665,19 @@ async function saveChanges() {
     }
     document.getElementById('savingOverlay').classList.remove('open');
     showToast('✓ Guardado correctamente', 'success');
-    await loadData();
   } catch (err) {
     console.error(err);
     document.getElementById('savingOverlay').classList.remove('open');
-    showToast('⚠️ Error al guardar: ' + err.message, 'error');
+    showToast('⚠️ Error al guardar: ' + errMsg(err), 'error');
+    return; // no refrescar si el guardado en sí falló — dirtyMatrix sigue disponible para reintentar
+  }
+  // Fuera del try/catch del guardado: si esto falla, los datos ya se
+  // guardaron — no se debe reportar como "error al guardar".
+  try {
+    await loadData();
+  } catch (err) {
+    console.error(err);
+    showToast('✓ Guardado correctamente, pero no se pudo refrescar la vista — recarga la página.', 'error');
   }
 }
 

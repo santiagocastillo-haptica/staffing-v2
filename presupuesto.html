@@ -14,9 +14,18 @@
       background: #fef3c7; border: 1px solid #fde68a;
       padding: 4px 10px; border-radius: 99px; display: none;
     }
+    #filterProyectoEdit {
+      padding: 7px 28px 7px 11px; border: 1.5px solid #d4dfe2; border-radius: 7px;
+      font-family: inherit; font-size: 12px; font-weight: 600; color: #1a2e35; background: #fff;
+    }
+    #filterProyectoEdit:focus { outline: none; border-color: #003237; }
 
     /* ── Matrix table wrapper ────────────────────── */
-    .matrix-wrap { overflow-x: auto; border-radius: 12px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); }
+    /* max-height + overflow-y: para que el thead (sticky) tenga un contenedor
+       que realmente se desplaza verticalmente dentro de sí mismo — si solo
+       hubiera overflow-x, matrix-wrap nunca desarrolla scroll propio y el
+       sticky no tiene contra qué fijarse. */
+    .matrix-wrap { overflow-x: auto; overflow-y: auto; max-height: calc(100vh - 260px); border-radius: 12px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); }
     .matrix { border-collapse: collapse; font-size: 12px; background: #fff; min-width: 100%; }
 
     .matrix .col-name {
@@ -24,9 +33,10 @@
       background: #fff; min-width: 180px; max-width: 200px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    .matrix thead .col-name { background: #1a2e35; z-index: 3; }
+    .matrix thead .col-name { background: #1a2e35; z-index: 4; }
 
-    .matrix thead tr th { padding: 0; text-align: center; font-weight: 600; white-space: nowrap; }
+    /* El top exacto de cada fila del thead se calcula en JS (applyStickyHeaderRows) */
+    .matrix thead tr th { padding: 0; text-align: center; font-weight: 600; white-space: nowrap; position: sticky; z-index: 3; }
     .row-month th {
       background: #1a2e35; color: rgba(255,255,255,0.7);
       font-size: 10px; font-weight: 700; text-transform: uppercase;
@@ -81,7 +91,8 @@
     .hrs-input:hover { border-color: #d4dfe2; background: #fff; }
     .hrs-input:focus { outline: none; border-color: #003237; background: #fff; }
     .hrs-input.changed { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
-    .hrs-input::-webkit-inner-spin-button, .hrs-input::-webkit-outer-spin-button { opacity: 0.4; }
+    .hrs-input::-webkit-inner-spin-button, .hrs-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    .hrs-input[type=number] { -moz-appearance: textfield; }
 
     .pct-cell { font-size: 11px; font-weight: 700; }
     .pct-low  { color: #059669; }
@@ -211,8 +222,12 @@
       <div class="toolbar-left">
         <div class="update-notice" id="updateNotice">Cargando datos…</div>
         <span class="changes-badge" id="changesBadge"></span>
+        <select id="filterProyectoEdit" onchange="onFiltroProyectoChange(this.value)">
+          <option value="">— Todos los proyectos —</option>
+        </select>
       </div>
       <div style="display:flex;gap:8px">
+        <button class="btn-secondary" id="btnToggleInactivos" onclick="toggleHideInactivos()">🚫 Ocultar quienes ya no están</button>
         <button class="btn-secondary" id="btnToggleFinished" onclick="toggleHideFinished()">👁 Ocultar finalizados</button>
         <button class="btn-secondary" onclick="openProjectsMgmt()">🗂 Gestionar proyectos</button>
         <button class="btn-secondary" onclick="openImportModal()">📥 Importar desde Staffing</button>
@@ -268,9 +283,10 @@
       <div class="modal-field"><label>Horas Doer Visual</label><input type="number" id="pmHorasDoerVisual" min="0" step="0.5" value="0" /></div>
     </div>
 
-    <div class="modal-actions" style="justify-content:space-between">
+    <div class="modal-actions" style="justify-content:space-between;align-items:center">
       <button class="btn-secondary" onclick="closeProjectModal()">Cancelar</button>
-      <button class="btn-primary" id="btnSuggestTeam" onclick="suggestTeam(event)">Sugerir equipo →</button>
+      <span style="font-size:11px;color:#9ca3af">Sugerencia de equipo deshabilitada temporalmente — ajustando reglas.</span>
+      <button class="btn-primary" id="btnSuggestTeam" onclick="suggestTeam(event)" disabled title="Deshabilitado temporalmente">Sugerir equipo →</button>
     </div>
 
     <div id="pmSuggestions" style="display:none">
@@ -341,6 +357,9 @@ let dirtyMatrix = {}; // misma forma, solo celdas modificadas: { hours, rowIndex
 let modalPerson = null;
 let weekRange   = [];  // lista fija de semanas a mostrar: [{ semana, año, key, monday }]
 let hideFinished = false;
+let hideInactivos = false;
+let personasActivas = new Set(); // personas presentes hoy en Roles_Usuarios
+let filtroProyecto = '';
 let proyectoEstado    = {}; // { [proyecto]: 'Activo' | 'Cerrado' }
 let proyectosRowIndex = {}; // { [proyecto]: fila en la pestaña Proyectos, para actualizar en vez de duplicar }
 
@@ -403,8 +422,10 @@ async function loadData() {
     }).filter(r => r.semana && r.colaborador);
 
     const todasLasPersonas = await fetchAllPersonas();
+    personasActivas = new Set(todasLasPersonas);
     buildMatrix(todasLasPersonas);
     buildWeekRange();
+    populateProyectoFilter();
     dirtyMatrix = {};
     renderMatrix();
     updateTimestamp();
@@ -412,7 +433,7 @@ async function loadData() {
   } catch(err) {
     console.error(err);
     document.getElementById('matrixContainer').innerHTML =
-      `<div class="state-msg">⚠️ Error al cargar datos.<br><small>${err.message}</small></div>`;
+      `<div class="state-msg">⚠️ Error al cargar datos.<br><small>${errMsg(err)}</small></div>`;
   }
 }
 
@@ -540,7 +561,7 @@ async function toggleProjectStatus(proy, isActive) {
     await saveCatalogEstado(proy, nuevoEstado);
   } catch (err) {
     console.error(err);
-    showToast('⚠️ No se pudo guardar el estado: ' + err.message, 'error');
+    showToast('⚠️ No se pudo guardar el estado: ' + errMsg(err), 'error');
   } finally {
     renderCatalogList();
   }
@@ -559,7 +580,7 @@ async function addCatalogProject() {
     showToast('✓ Proyecto agregado al catálogo', 'success');
   } catch (err) {
     console.error(err);
-    showToast('⚠️ Error al guardar: ' + err.message, 'error');
+    showToast('⚠️ Error al guardar: ' + errMsg(err), 'error');
   } finally {
     renderCatalogList();
   }
@@ -612,14 +633,18 @@ function renderMatrix() {
 
   // ── TBODY ──
   let colaboradores = Object.keys(matrix).sort();
+  if (hideInactivos) colaboradores = colaboradores.filter(col => personasActivas.has(col));
   let tbody = '<tbody>';
 
   colaboradores.forEach(col => {
     let proyectos = sortProjects(Object.keys(matrix[col]));
     if (hideFinished) {
       proyectos = proyectos.filter(proy => !shouldHideProject(col, proy));
-      if (!proyectos.length) return; // nadie que mostrar de esta persona
     }
+    if (filtroProyecto) {
+      proyectos = proyectos.filter(proy => proy === filtroProyecto);
+    }
+    if ((hideFinished || filtroProyecto) && !proyectos.length) return; // nadie que mostrar de esta persona
 
     tbody += `<tr class="row-person">`;
     tbody += `<td class="col-name">${col}</td>`;
@@ -647,10 +672,11 @@ function renderMatrix() {
         const val      = dirty ? dirtyMatrix[col][proy][w.key].hours : (existing ? existing.hours : 0);
         const changed  = dirty ? 'changed' : '';
         tbody += `<td style="${isCurWeek(w) ? 'background:#fffaf8' : ''}">
-          <input class="hrs-input ${changed}" type="number" min="0" step="0.5"
+          <input class="hrs-input ${changed}" type="number" min="0" step="1" inputmode="numeric"
             value="${val || ''}" placeholder=""
             data-col="${escAttr(col)}" data-proy="${escAttr(proy)}" data-week="${w.key}" data-semana="${w.semana}" data-anio="${w.año}"
             data-rowindex="${existing ? existing.rowIndex : ''}"
+            oninput="this.value = this.value.replace(/[^0-9]/g,'')"
             onchange="onCellChange(this)" />
         </td>`;
       });
@@ -671,6 +697,18 @@ function renderMatrix() {
     <div class="matrix-wrap">
       <table class="matrix">${thead}${tbody}</table>
     </div>`;
+  applyStickyHeaderRows('matrixContainer');
+}
+
+// Fija cada fila del thead (mes/fechas/semana/capacidad) en su offset exacto
+// para que el bloque completo quede inmóvil al hacer scroll vertical.
+function applyStickyHeaderRows(containerId) {
+  const rows = document.querySelectorAll(`#${containerId} thead tr`);
+  let top = 0;
+  rows.forEach(row => {
+    row.querySelectorAll('th').forEach(th => { th.style.top = `${top}px`; });
+    top += row.getBoundingClientRect().height;
+  });
 }
 
 // ── Cell change ───────────────────────────────────────────────────────────
@@ -732,6 +770,30 @@ function toggleHideFinished() {
   btn.textContent = hideFinished ? '👁 Mostrar todos' : '👁 Ocultar finalizados';
   btn.classList.toggle('btn-primary', hideFinished);
   btn.classList.toggle('btn-secondary', !hideFinished);
+  renderMatrix();
+}
+
+function toggleHideInactivos() {
+  hideInactivos = !hideInactivos;
+  const btn = document.getElementById('btnToggleInactivos');
+  btn.textContent = hideInactivos ? '🚫 Mostrar todos' : '🚫 Ocultar quienes ya no están';
+  btn.classList.toggle('btn-primary', hideInactivos);
+  btn.classList.toggle('btn-secondary', !hideInactivos);
+  renderMatrix();
+}
+
+// ── Filtro por proyecto (reutiliza el catálogo conocido) ──────────────────
+function populateProyectoFilter() {
+  const sel = document.getElementById('filterProyectoEdit');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— Todos los proyectos —</option>' +
+    allKnownProjectNames().map(p => `<option value="${escAttr(p)}">${p}</option>`).join('');
+  sel.value = prev && allKnownProjectNames().includes(prev) ? prev : '';
+  filtroProyecto = sel.value;
+}
+
+function onFiltroProyectoChange(value) {
+  filtroProyecto = value;
   renderMatrix();
 }
 
@@ -803,11 +865,19 @@ async function saveChanges() {
     }
     document.getElementById('savingOverlay').classList.remove('open');
     showToast('✓ Guardado correctamente', 'success');
-    await loadData();
   } catch(err) {
     console.error(err);
     document.getElementById('savingOverlay').classList.remove('open');
-    showToast('⚠️ Error al guardar: ' + err.message, 'error');
+    showToast('⚠️ Error al guardar: ' + errMsg(err), 'error');
+    return; // no refrescar si el guardado en sí falló — dirtyMatrix sigue disponible para reintentar
+  }
+  // Fuera del try/catch del guardado: si esto falla, los datos ya se
+  // guardaron — no se debe reportar como "error al guardar".
+  try {
+    await loadData();
+  } catch (err) {
+    console.error(err);
+    showToast('✓ Guardado correctamente, pero no se pudo refrescar la vista — recarga la página.', 'error');
   }
 }
 
@@ -969,7 +1039,7 @@ async function analyzeImport() {
     document.getElementById('btnConfirmImport').disabled = entries.length === 0;
   } catch (err) {
     console.error(err);
-    preview.innerHTML = `<div class="state-msg">⚠️ Error al leer la hoja vieja.<br><small>${err.message}</small></div>`;
+    preview.innerHTML = `<div class="state-msg">⚠️ Error al leer la hoja vieja.<br><small>${errMsg(err)}</small></div>`;
   } finally {
     btn.disabled = false;
   }
@@ -1132,7 +1202,7 @@ async function suggestTeam(evt) {
     rolesExtended = await fetchRolesExtended();
   } catch (err) {
     console.error(err);
-    alert('No se pudo leer Roles_Usuarios: ' + err.message);
+    alert('No se pudo leer Roles_Usuarios: ' + errMsg(err));
     btn.disabled = false;
     btn.textContent = 'Sugerir equipo →';
     return;

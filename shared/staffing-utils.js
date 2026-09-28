@@ -231,6 +231,15 @@ function colToLetter(idx) {
   return l;
 }
 
+// Extrae un mensaje legible de un error de gapi (que no es un Error nativo —
+// viene como { result: { error: { message } } } y no tiene .message directo,
+// por lo que mostrar err.message a secas termina en "undefined").
+function errMsg(err) {
+  return (err && err.result && err.result.error && err.result.error.message)
+    || (err && err.message)
+    || (typeof err === 'string' ? err : JSON.stringify(err));
+}
+
 function escAttr(s) {
   return String(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
