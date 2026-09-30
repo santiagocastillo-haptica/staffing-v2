@@ -112,8 +112,10 @@
       <div class="filters" style="margin-bottom:0">
         <div class="filter-group">
           <label>Proyecto</label>
-          <select id="selProyecto"><option value="">— Elige un proyecto —</option></select>
+          <input type="text" id="selProyecto" list="selProyectoOptions" placeholder="Escribe para buscar…" autocomplete="off" />
+          <datalist id="selProyectoOptions"></datalist>
         </div>
+        <button class="btn-secondary" id="btnMisEquiposRf" onclick="toggleMisEquiposRf()" style="align-self:flex-end">👤 Ver mis equipos</button>
       </div>
     </div>
 
@@ -259,10 +261,62 @@ async function loadMySides() {
 }
 
 // ── Proyecto: selección y datos derivados ──────────────────────────────────
+let knownProyectosRf   = [];
+let misEquiposOnlyRf   = false;
+
 function populateProyectoSelect() {
-  const proyectos = [...new Set(allData.map(r => r.proyecto).filter(Boolean))].sort();
-  fillSelect('selProyecto', proyectos, 'Elige un proyecto');
-  document.getElementById('selProyecto').onchange = onProyectoChange;
+  knownProyectosRf = [...new Set(allData.map(r => r.proyecto).filter(Boolean))].sort();
+  applyProyectoFilterRf();
+  document.getElementById('selProyecto').addEventListener('input', onProyectoInputChange);
+}
+
+function renderProyectoOptions(list) {
+  document.getElementById('selProyectoOptions').innerHTML = list.map(p => `<option value="${escAttr(p)}"></option>`).join('');
+}
+
+// Solo dispara la carga del proyecto cuando el texto escrito coincide EXACTO
+// con un nombre conocido (ej. al elegir una sugerencia del datalist) — así no
+// se recarga todo en cada tecla mientras se sigue escribiendo.
+function onProyectoInputChange() {
+  const val = document.getElementById('selProyecto').value.trim();
+  if (!val) {
+    selectedProyecto = '';
+    document.getElementById('proyectoDetail').style.display = 'none';
+    return;
+  }
+  if (!knownProyectosRf.includes(val)) return;
+  onProyectoChange();
+}
+
+// Proyectos donde YO tengo al menos una fila — igual que "Ver mis equipos"
+// en Staffing del Equipo.
+function misProyectosSetRf() {
+  if (!mySession) return null;
+  return new Set(allData.filter(r => r.colaborador === mySession.persona).map(r => r.proyecto));
+}
+
+function toggleMisEquiposRf() {
+  misEquiposOnlyRf = !misEquiposOnlyRf;
+  const btn = document.getElementById('btnMisEquiposRf');
+  btn.textContent = misEquiposOnlyRf ? '👤 Ver todos los proyectos' : '👤 Ver mis equipos';
+  btn.classList.toggle('btn-primary', misEquiposOnlyRf);
+  btn.classList.toggle('btn-secondary', !misEquiposOnlyRf);
+  applyProyectoFilterRf();
+}
+
+function applyProyectoFilterRf() {
+  let list = knownProyectosRf;
+  if (misEquiposOnlyRf) {
+    const misSet = misProyectosSetRf();
+    list = knownProyectosRf.filter(p => misSet && misSet.has(p));
+  }
+  renderProyectoOptions(list);
+  const input = document.getElementById('selProyecto');
+  if (input.value && !list.includes(input.value)) {
+    input.value = '';
+    selectedProyecto = '';
+    document.getElementById('proyectoDetail').style.display = 'none';
+  }
 }
 
 function computeEquipoMatrix(proyecto) {

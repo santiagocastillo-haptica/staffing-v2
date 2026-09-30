@@ -269,6 +269,12 @@
       <h2>Detalle por proyecto</h2>
       <div id="tableContainer"><div class="state-msg"><div class="spinner"></div>Cargando…</div></div>
     </div>
+
+    <div id="desgloseCard" style="display:none">
+      <h2 style="font-size:15px;font-weight:600;color:#1a2e35;margin-bottom:4px">Desglose por equipo y semana</h2>
+      <div class="chart-sub" style="margin-bottom:20px">Horas presupuestadas por persona · una tabla por proyecto</div>
+      <div id="desgloseContainer"></div>
+    </div>
     </div> <!-- /dashboardView -->
 
     <div id="clasicoView" style="display:none">
@@ -719,6 +725,103 @@ function updateDashboard() {
 
   const trendData = allData.filter(r => passesCommonFilters(r));
   renderTrend(trendData);
+  renderDesglose();
+}
+
+// ── Desglose por equipo y semana (mismo formato que Solicitud de Tiempos) ──
+// Se muestra solo cuando hay un proyecto puntual filtrado, o cuando "Ver mis
+// equipos" está activo — en ese caso, una tabla por cada proyecto de mis
+// equipos, para no mezclar personas de proyectos distintos en una sola vista.
+const DESGLOSE_WEEKS_BACK    = 2;
+const DESGLOSE_WEEKS_FORWARD = 8;
+
+function computeEquipoMatrixDesglose(proyecto) {
+  const m = {};
+  allData.filter(r => r.proyecto === proyecto).forEach(r => {
+    const key = semanaAnioKey(r.semana, r.año);
+    if (!m[r.colaborador]) m[r.colaborador] = {};
+    m[r.colaborador][key] = (m[r.colaborador][key] || 0) + r.horaspresupuestadas;
+  });
+  return m;
+}
+
+function weeksForDesglose() {
+  const cur = getCurrentIsoYearWeek();
+  const full = getFullWeekRange();
+  const curIdx = full.findIndex(w => w.semana === cur.semana && w.año === cur.año);
+  return full.slice(Math.max(0, curIdx - DESGLOSE_WEEKS_BACK), curIdx + DESGLOSE_WEEKS_FORWARD);
+}
+
+function buildDesgloseTheadHtml(weeks) {
+  const monthGroups = [];
+  weeks.forEach(w => {
+    const { month, year } = weekMonthYear(w.semana, w.año);
+    const gkey = `${year}-${month}`;
+    if (!monthGroups.length || monthGroups[monthGroups.length - 1].gkey !== gkey) {
+      monthGroups.push({ gkey, label: MONTHS_ES[month], count: 1 });
+    } else {
+      monthGroups[monthGroups.length - 1].count++;
+    }
+  });
+  const cur = getCurrentIsoYearWeek();
+  const isCurWeek = w => w.semana === cur.semana && w.año === cur.año;
+
+  let thead = '<thead>';
+  thead += '<tr class="row-month"><th class="col-name"></th>';
+  monthGroups.forEach(g => { thead += `<th colspan="${g.count}">${g.label}</th>`; });
+  thead += '<th></th></tr>';
+
+  thead += '<tr class="row-dates"><th class="col-name"></th>';
+  weeks.forEach(w => { thead += `<th>${weekDateLabel(w.semana, w.año)}</th>`; });
+  thead += '<th></th></tr>';
+
+  thead += '<tr class="row-weeks"><th class="col-name"></th>';
+  weeks.forEach(w => {
+    thead += `<th style="${isCurWeek(w) ? 'background:#FA4616;color:#fff' : ''}">${w.semana}<br><span style="font-size:9px;font-weight:600;opacity:.7">${w.año}</span></th>`;
+  });
+  thead += '<th>Total</th></tr>';
+  thead += '</thead>';
+  return thead;
+}
+
+function renderDesgloseTabla(proyecto) {
+  const equipoMatrix = computeEquipoMatrixDesglose(proyecto);
+  const personas = Object.keys(equipoMatrix).sort();
+  if (!personas.length) return '';
+  const weeks = weeksForDesglose();
+
+  const thead = buildDesgloseTheadHtml(weeks);
+  const tbody = personas.map(p => {
+    const cells = weeks.map(w => `<td>${fmt(equipoMatrix[p][w.key] || 0)}</td>`).join('');
+    const total = weeks.reduce((a, w) => a + (equipoMatrix[p][w.key] || 0), 0);
+    return `<tr class="row-clasico-project"><td class="col-name">${p}</td>${cells}<td><strong>${fmt(total)}</strong></td></tr>`;
+  }).join('');
+
+  return `
+    <div style="margin-bottom:24px">
+      <div style="font-size:13px;font-weight:700;color:#003237;margin-bottom:8px">${proyecto}</div>
+      <div class="matrix-wrap"><table class="matrix">${thead}<tbody>${tbody}</tbody></table></div>
+    </div>`;
+}
+
+function renderDesglose() {
+  const card = document.getElementById('desgloseCard');
+  const container = document.getElementById('desgloseContainer');
+  const proyectoFiltro = document.getElementById('filterProyecto').value;
+
+  let proyectos = [];
+  if (proyectoFiltro) {
+    proyectos = [proyectoFiltro];
+  } else if (misEquiposOnly) {
+    const misSet = misProyectosSet();
+    proyectos = misSet ? [...misSet].sort() : [];
+  }
+
+  if (!proyectos.length) { card.style.display = 'none'; container.innerHTML = ''; return; }
+
+  card.style.display = 'block';
+  container.innerHTML = proyectos.map(renderDesgloseTabla).join('') ||
+    '<div class="state-msg">Nadie tiene horas presupuestadas todavía en estos proyectos.</div>';
 }
 
 // ── Vista Clásica (fusionada desde el sistema viejo) ────────────────────────
