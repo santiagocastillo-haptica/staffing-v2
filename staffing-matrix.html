@@ -190,7 +190,8 @@
       </div>
       <div class="filter-group">
         <label>Proyecto</label>
-        <select id="filterProyecto"><option value="">Todos</option></select>
+        <input type="text" id="filterProyecto" list="filterProyectoOptions" placeholder="Todos — escribe para buscar…" autocomplete="off" />
+        <datalist id="filterProyectoOptions"></datalist>
       </div>
       <div class="filter-group">
         <label>Estado</label>
@@ -306,6 +307,7 @@ let trendChartInstance = null;
 let chartDim = 'colaborador';
 let misPersona = null;
 let misEquiposOnly = false;
+let knownProyectosMatrix = []; // nombres válidos para el buscador de "Proyecto"
 
 let currentMainView = 'dashboard';
 let clasicoLoaded = false;
@@ -427,16 +429,22 @@ async function populateFilters() {
   const todasLasPersonas = await fetchAllPersonas();
   const colaboradores = [...new Set([...unique('colaborador'), ...todasLasPersonas])].sort();
   fillSelect('filterColaborador', colaboradores, 'Todos');
-  fillSelect('filterProyecto', unique('proyecto'), 'Todos');
   fillSelect('filterEstado', unique('estado'), 'Todos');
+
+  knownProyectosMatrix = unique('proyecto');
+  document.getElementById('filterProyectoOptions').innerHTML =
+    knownProyectosMatrix.map(p => `<option value="${escAttr(p)}"></option>`).join('');
 
   selSemana.value = getSemanaDefaultKey(dataWeeks);
 
-  document.getElementById('filterProyecto').addEventListener('change', () => {
-    const proyectoSel = document.getElementById('filterProyecto').value;
+  const onProyectoFilterChange = () => {
+    const proyectoSel = document.getElementById('filterProyecto').value.trim();
+    if (proyectoSel && !knownProyectosMatrix.includes(proyectoSel)) return; // sigue escribiendo, aún no es válido
     selSemana.value = proyectoSel ? '' : getSemanaDefaultKey(dataWeeks);
     updateDashboard();
-  });
+  };
+  document.getElementById('filterProyecto').addEventListener('input', onProyectoFilterChange);
+  document.getElementById('filterProyecto').addEventListener('change', onProyectoFilterChange);
 
   ['filterSemana', 'filterColaborador', 'filterEstado'].forEach(id =>
     document.getElementById(id).addEventListener('change', updateDashboard)
