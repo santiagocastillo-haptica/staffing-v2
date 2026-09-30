@@ -48,6 +48,8 @@ const HapticaAuth = (() => {
   let tokenClient = null;
   let opts        = null;
   let session     = null;
+  let refreshTimer      = null; // renovación proactiva, antes de que el token expire
+  let gapiRetryWrapped   = false;
 
   function $(id) { return document.getElementById(id); }
 
@@ -109,6 +111,72 @@ const HapticaAuth = (() => {
   function persistToken(accessToken, expiresInSec) {
     sessionStorage.setItem(TOKEN_KEY, accessToken);
     sessionStorage.setItem(EXPIRY_KEY, String(Date.now() + expiresInSec * 1000 - 60000));
+    scheduleProactiveRefresh(expiresInSec);
+  }
+
+  // Renueva el token unos minutos antes de que expire, mientras la pestaña
+  // sigue abierta, para que una acción a mitad de sesión (ej. aprobar una
+  // solicitud) nunca choque con un token vencido. No dispara resolveSession
+  // ni onReady — solo actualiza el token en silencio.
+  function scheduleProactiveRefresh(expiresInSec) {
+    if (refreshTimer) clearTimeout(refreshTimer);
+    const ms = Math.max((Number(expiresInSec || 3600) - 300) * 1000, 30000);
+    refreshTimer = setTimeout(() => { silentRefresh().catch(() => {}); }, ms);
+  }
+
+  // Intercambia temporalmente el callback del tokenClient para pedir un
+  // token nuevo sin pasar por el flujo de login completo (resolveSession).
+  function silentRefresh() {
+    return new Promise((resolve, reject) => {
+      if (!tokenClient) { reject(new Error('tokenClient no listo')); return; }
+      const prevCallback = tokenClient.callback;
+      tokenClient.callback = (resp) => {
+        tokenClient.callback = prevCallback;
+        if (resp.error) { reject(new Error(resp.error)); return; }
+        persistToken(resp.access_token, Number(resp.expires_in || 3600));
+        gapi.client.setToken({ access_token: resp.access_token });
+        resolve(resp.access_token);
+      };
+      try {
+        tokenClient.requestAccessToken({ prompt: '' });
+      } catch (err) {
+        tokenClient.callback = prevCallback;
+        reject(err);
+      }
+    });
+  }
+
+  // Envuelve los métodos de gapi.client.sheets que usan las páginas: si una
+  // llamada falla por token vencido (401), renueva en silencio y reintenta
+  // una vez — así una acción a mitad de sesión no se pierde con un error
+  // de autenticación que el usuario no puede resolver por su cuenta.
+  function wrapGapiRetry() {
+    if (gapiRetryWrapped) return;
+    gapiRetryWrapped = true;
+    const targets = [
+      [gapi.client.sheets.spreadsheets, 'get'],
+      [gapi.client.sheets.spreadsheets.values, 'get'],
+      [gapi.client.sheets.spreadsheets.values, 'update'],
+      [gapi.client.sheets.spreadsheets.values, 'append'],
+      [gapi.client.sheets.spreadsheets.values, 'batchUpdate'],
+      [gapi.client.sheets.spreadsheets.values, 'clear'],
+    ];
+    targets.forEach(([obj, method]) => {
+      const original = obj[method].bind(obj);
+      obj[method] = async function(...args) {
+        try {
+          return await original(...args);
+        } catch (err) {
+          if (!isAuthError(err)) throw err;
+          try {
+            await silentRefresh();
+          } catch (e2) {
+            throw err; // no se pudo renovar — se propaga el 401 original
+          }
+          return await original(...args);
+        }
+      };
+    });
   }
 
   function storedToken() {
@@ -130,6 +198,7 @@ const HapticaAuth = (() => {
   function gapiLoaded() {
     gapi.load('client', async () => {
       await gapi.client.load('https://sheets.googleapis.com/$discovery/rest?version=v4');
+      wrapGapiRetry();
       gapiReady = true;
       maybeEnableLogin();
       const existing = storedToken();
