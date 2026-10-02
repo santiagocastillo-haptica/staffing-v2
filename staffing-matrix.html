@@ -283,7 +283,7 @@
         <div class="clasico-toolbar-left">
           <div class="update-notice" id="clasicoUpdateNotice">Cargando datos…</div>
         </div>
-        <button class="btn-secondary" id="btnToggleFinishedClasico" onclick="toggleHideFinishedClasico()">👁 Ocultar finalizados</button>
+        <div style="display:flex;gap:8px"><button class="btn-secondary" id="btnToggleInactivosClasico" onclick="toggleHideInactivosClasico()">👤 Ocultar personas inactivas</button><button class="btn-secondary" id="btnToggleFinishedClasico" onclick="toggleHideFinishedClasico()">👁 Ocultar finalizados</button></div>
       </div>
       <div id="clasicoMatrixContainer">
         <div class="state-msg"><div class="spinner"></div>Cargando…</div>
@@ -314,6 +314,8 @@ let clasicoLoaded = false;
 let matrixClasico = {}; // matrixClasico[colaborador][proyecto][key] = { hours }
 let weekRangeClasico = [];
 let hideFinishedClasico = false;
+let hideInactivosClasico = false;
+let personasInactivasClasico = new Set();
 let proyectoEstadoClasico    = {}; // { [proyecto]: 'Activo' | 'Cerrado' }
 let proyectosRowIndexClasico = {};
 
@@ -849,7 +851,8 @@ async function loadClasicoView() {
   document.getElementById('clasicoMatrixContainer').innerHTML =
     '<div class="state-msg"><div class="spinner"></div>Cargando datos…</div>';
   try {
-    const [todasLasPersonas] = await Promise.all([fetchAllPersonas(), loadProyectosCatalogClasico()]);
+    const [todasLasPersonas, estadoPersonas] = await Promise.all([fetchAllPersonas(), fetchPersonasInactivas(), loadProyectosCatalogClasico()]);
+    personasInactivasClasico = estadoPersonas.inactivas;
     buildMatrixClasico(todasLasPersonas);
     weekRangeClasico = getFullWeekRange();
     renderMatrixClasico();
@@ -912,6 +915,12 @@ function toggleHideFinishedClasico() {
   renderMatrixClasico();
 }
 
+function toggleHideInactivosClasico() {
+  hideInactivosClasico = !hideInactivosClasico;
+  document.getElementById('btnToggleInactivosClasico').textContent = hideInactivosClasico ? '👤 Mostrar personas inactivas' : '👤 Ocultar personas inactivas';
+  renderMatrixClasico();
+}
+
 function renderMatrixClasico() {
   const monthGroups = [];
   weekRangeClasico.forEach(w => {
@@ -950,7 +959,8 @@ function renderMatrixClasico() {
   thead += '</tr>';
   thead += '</thead>';
 
-  const colaboradores = Object.keys(matrixClasico).sort();
+  let colaboradores = Object.keys(matrixClasico).sort();
+  if (hideInactivosClasico) colaboradores = colaboradores.filter(col => !personasInactivasClasico.has(col));
   let tbody = '<tbody>';
 
   colaboradores.forEach(col => {

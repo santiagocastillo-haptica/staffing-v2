@@ -227,7 +227,7 @@
         </select>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn-secondary" id="btnToggleInactivos" onclick="toggleHideInactivos()">🚫 Ocultar quienes ya no están</button>
+        <button class="btn-secondary" id="btnToggleInactivos" onclick="toggleHideInactivos()">👤 Ocultar personas inactivas</button>
         <button class="btn-secondary" id="btnToggleFinished" onclick="toggleHideFinished()">👁 Ocultar finalizados</button>
         <button class="btn-secondary" onclick="openProjectsMgmt()">🗂 Gestionar proyectos</button>
         <button class="btn-secondary" onclick="openImportModal()">📥 Importar desde Staffing</button>
@@ -358,7 +358,8 @@ let modalPerson = null;
 let weekRange   = [];  // lista fija de semanas a mostrar: [{ semana, año, key, monday }]
 let hideFinished = false;
 let hideInactivos = false;
-let personasActivas = new Set(); // personas presentes hoy en Roles_Usuarios
+let personasActivas = new Set(); // en Roles_Usuarios y sin marca "Activo = No"
+let hasActivoCol = false;
 let filtroProyecto = '';
 let proyectoEstado    = {}; // { [proyecto]: 'Activo' | 'Cerrado' }
 let proyectosRowIndex = {}; // { [proyecto]: fila en la pestaña Proyectos, para actualizar en vez de duplicar }
@@ -422,7 +423,9 @@ async function loadData() {
     }).filter(r => r.semana && r.colaborador);
 
     const todasLasPersonas = await fetchAllPersonas();
-    personasActivas = new Set(todasLasPersonas);
+    const estadoPersonas = await fetchPersonasInactivas();
+    hasActivoCol = estadoPersonas.hasActivoCol;
+    personasActivas = new Set(todasLasPersonas.filter(p => !estadoPersonas.inactivas.has(p)));
     buildMatrix(todasLasPersonas);
     buildWeekRange();
     populateProyectoFilter();
@@ -774,9 +777,12 @@ function toggleHideFinished() {
 }
 
 function toggleHideInactivos() {
+  if (!hasActivoCol && !hideInactivos) {
+    showToast('Agrega la columna "Activo" en Roles_Usuarios y pon "No" a quienes ya no están.', 'error');
+  }
   hideInactivos = !hideInactivos;
   const btn = document.getElementById('btnToggleInactivos');
-  btn.textContent = hideInactivos ? '🚫 Mostrar todos' : '🚫 Ocultar quienes ya no están';
+  btn.textContent = hideInactivos ? '👤 Mostrar personas inactivas' : '👤 Ocultar personas inactivas';
   btn.classList.toggle('btn-primary', hideInactivos);
   btn.classList.toggle('btn-secondary', !hideInactivos);
   renderMatrix();

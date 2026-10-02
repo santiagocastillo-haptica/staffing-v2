@@ -247,6 +247,32 @@ function escAttr(s) {
 // Todas las personas registradas en Roles_Usuarios (no solo quienes ya
 // tienen filas en Dashboard_Data) — para que alguien sin horas todavía
 // igual aparezca en las matrices y se le puedan asignar.
+// Personas marcadas como inactivas en Roles_Usuarios (columna opcional
+// "Activo" con valor No / Inactivo / 0 / false). Si la columna no existe,
+// nadie se considera inactivo y hasActivoCol viene en false.
+async function fetchPersonasInactivas() {
+  try {
+    const res = await gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_ROLES,
+    });
+    const rows = res.result.values || [];
+    if (rows.length < 2) return { hasActivoCol: false, inactivas: new Set() };
+    const h = rows[0].map(x => x.trim().toLowerCase());
+    const iPersona = h.indexOf('persona');
+    const iActivo = h.indexOf('activo');
+    if (iPersona === -1 || iActivo === -1) return { hasActivoCol: false, inactivas: new Set() };
+    const inactivas = new Set();
+    rows.slice(1).forEach(r => {
+      const v = (r[iActivo] || '').trim().toLowerCase();
+      if (['no', 'inactivo', '0', 'false'].includes(v)) {
+        const nombre = normalizaColaborador((r[iPersona] || '').trim());
+        if (nombre) inactivas.add(nombre);
+      }
+    });
+    return { hasActivoCol: true, inactivas };
+  } catch (e) { return { hasActivoCol: false, inactivas: new Set() }; }
+}
+
 async function fetchAllPersonas() {
   try {
     const res = await gapi.client.sheets.spreadsheets.values.get({
