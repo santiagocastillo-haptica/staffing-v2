@@ -652,7 +652,7 @@ function renderMatrix() {
     tbody += `<tr class="row-person">`;
     tbody += `<td class="col-name">${col}</td>`;
     weekRange.forEach(w => {
-      const totalHrs = Object.values(matrix[col]).reduce((sum, proy) => {
+      const totalHrs = Object.keys(matrix[col]).reduce((sum, proy) => {
         const cell = (dirtyMatrix[col] && dirtyMatrix[col][proy] && dirtyMatrix[col][proy][w.key] !== undefined)
           ? dirtyMatrix[col][proy][w.key].hours
           : (matrix[col][proy] && matrix[col][proy][w.key] ? matrix[col][proy][w.key].hours : 0);
