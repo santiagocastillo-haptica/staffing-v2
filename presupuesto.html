@@ -455,8 +455,15 @@ function buildMatrix(todasLasPersonas) {
   });
 }
 
+// Solo desde el mes actual hacia adelante: los meses anteriores quedan ocultos.
+// Se incluye siempre la semana actual aunque su lunes caiga en el mes previo.
 function buildWeekRange() {
-  weekRange = getFullWeekRange();
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const cur = getCurrentIsoYearWeek();
+  const curMonday = getWeekMonday(cur.semana, cur.año).getTime();
+  const start = Math.min(monthStart, curMonday);
+  weekRange = getFullWeekRange().filter(w => w.monday >= start);
 }
 
 // Config_Cargabilidad puede no tener año todavía — usa la clave compuesta si existe,
