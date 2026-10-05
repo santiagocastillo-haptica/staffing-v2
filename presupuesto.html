@@ -665,7 +665,7 @@ function renderMatrix() {
           : (matrix[col][proy] && matrix[col][proy][w.key] ? matrix[col][proy][w.key].hours : 0);
         return sum + cell;
       }, 0);
-      const cap = 40 * capPct(cfgKeyFor(w), configMap);
+      const cap = 40;
       const pct = cap > 0 ? totalHrs / cap : (totalHrs > 0 ? 1 : null);
       tbody += `<td style="${isCurWeek(w) ? 'background:#fff3ee' : ''}">
         ${totalHrs > 0 ? `<span class="pct-cell ${pctClass(pct)}">${fmtPct(pct)}</span>` : ''}
@@ -767,7 +767,7 @@ function refreshPersonRow(col) {
     cells.forEach((cell, i) => {
       const w   = weekRange[i];
       const hrs = byWeek[w.key] || 0;
-      const cap = 40 * capPct(cfgKeyFor(w), configMap);
+      const cap = 40;
       const pct = cap > 0 ? hrs / cap : (hrs > 0 ? 1 : null);
       cell.innerHTML = hrs > 0 ? `<span class="pct-cell ${pctClass(pct)}">${fmtPct(pct)}</span>` : '';
     });
@@ -1155,7 +1155,7 @@ function suggestForRole(role, projectWeeks, horasTotal, metodologia, industria) 
       const metRank  = metodologia ? p.metodologias.indexOf(metodologia) : -1;
       const indRank  = industria ? p.industrias.indexOf(industria) : -1;
       const fits = projectWeeks.every(w => {
-        const cap = 40 * capPct(cfgKeyFor(w), configMap);
+        const cap = 40;
         return personLoadAtWeek(p.persona, w.key) + horasPerWeek <= cap + 0.001;
       });
       return { persona: p.persona, roleRank, metRank: metRank === -1 ? 99 : metRank, indRank: indRank === -1 ? 99 : indRank, fits };

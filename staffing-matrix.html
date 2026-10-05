@@ -537,7 +537,7 @@ function updateLoadBar() {
   const maxVal = Math.max(pres, ejec) || 1;
 
   const nColab = new Set(latestData.map(r => r.colaborador).filter(Boolean)).size;
-  const cap = weekObj ? capPct(cfgKeyFor(weekObj.semana, weekObj.año), configMap) : 1;
+  const cap = 1; // cargabilidad siempre sobre 40 h
   const capAjus = 40 * cap;
   const cap40 = nColab * Math.max(capAjus, 1);
   const pct40 = cap40 > 0 ? (pres / cap40) * 100 : 0;
@@ -974,7 +974,7 @@ function renderMatrixClasico() {
     tbody += `<td class="col-name">${col}</td>`;
     weekRangeClasico.forEach(w => {
       const totalHrs = Object.values(matrixClasico[col]).reduce((sum, proy) => sum + (proy[w.key] ? proy[w.key].hours : 0), 0);
-      const cap = 40 * capPct(cfgKeyFor(w.semana, w.año), configMap);
+      const cap = 40;
       const pct = cap > 0 ? totalHrs / cap : (totalHrs > 0 ? 1 : null);
       tbody += `<td style="${isCurWeek(w) ? 'background:#fff3ee' : ''}">
         ${totalHrs > 0 ? `<span class="pct-cell ${pctClass(pct)}">${fmtPct(pct)}</span>` : ''}
