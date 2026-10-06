@@ -283,6 +283,10 @@ async function fetchAllPersonas() {
     const h = rows[0].map(x => x.trim().toLowerCase());
     const iPersona = h.indexOf('persona');
     if (iPersona === -1) return [];
-    return rows.slice(1).map(r => normalizaColaborador((r[iPersona] || '').trim())).filter(Boolean);
+    // Activo = "Excluir": cuentas que inician sesión pero no son parte del equipo (ej. usuario de prueba)
+    const iActivo = h.indexOf('activo');
+    return rows.slice(1)
+      .filter(r => iActivo === -1 || (r[iActivo] || '').trim().toLowerCase() !== 'excluir')
+      .map(r => normalizaColaborador((r[iPersona] || '').trim())).filter(Boolean);
   } catch (e) { return []; }
 }
