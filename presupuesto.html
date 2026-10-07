@@ -232,6 +232,7 @@
         <button class="btn-secondary" id="btnToggleInactivos" onclick="toggleHideInactivos()">👤 Ocultar personas inactivas</button>
         <button class="btn-secondary" id="btnToggleFinished" onclick="toggleHideFinished()">👁 Ocultar finalizados</button>
         <button class="btn-secondary" onclick="openProjectsMgmt()">🗂 Gestionar proyectos</button>
+        <button class="btn-secondary" onclick="openPersonasMgmt()">👥 Gestionar personas</button>
         <button class="btn-secondary" onclick="openImportModal()">📥 Importar desde Staffing</button>
         <button class="btn-primary" onclick="openProjectModal()">🚀 Nuevo proyecto</button>
         <button class="btn-secondary" id="btnDiscard" onclick="discardChanges()" style="display:none">Descartar</button>
@@ -301,6 +302,18 @@
   </div>
 </div>
 
+<!-- Modal personas (activar/apagar) -->
+<div class="modal-overlay" id="personasMgmtOverlay">
+  <div class="modal modal-lg">
+    <h3>Gestionar personas</h3>
+    <p class="import-hint">Apaga a quienes ya no están en el equipo: dejan de verse al usar <b>Ocultar personas inactivas</b> y conservan su historial. Se guarda en la columna <code>Activo</code> de <code>Roles_Usuarios</code>.</p>
+    <div class="catalog-list" id="personasList"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closePersonasMgmt()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal catálogo de proyectos (activar/cerrar) -->
 <div class="modal-overlay" id="projectsMgmtOverlay">
   <div class="modal modal-lg">
@@ -364,6 +377,7 @@ let personasActivas = new Set(); // en Roles_Usuarios y sin marca "Activo = No"
 let hasActivoCol = false;
 let filtroProyecto = '';
 let filtroPersona = '';
+let proyectosRecienAgregados = new Set(); // "persona||proyecto" agregados a mano sin horas: se mantienen visibles
 let proyectoEstado    = {}; // { [proyecto]: 'Activo' | 'Cerrado' }
 let proyectosRowIndex = {}; // { [proyecto]: fila en la pestaña Proyectos, para actualizar en vez de duplicar }
 
@@ -428,6 +442,7 @@ async function loadData() {
     const todasLasPersonas = await fetchAllPersonas();
     const estadoPersonas = await fetchPersonasInactivas();
     hasActivoCol = estadoPersonas.hasActivoCol;
+    proyectosRecienAgregados = new Set();
     personasActivas = new Set(todasLasPersonas.filter(p => !estadoPersonas.inactivas.has(p)));
     buildMatrix(todasLasPersonas);
     buildWeekRange();
@@ -491,6 +506,7 @@ function projectHasAnyHours(col, proy) {
 // depende de si hay horas cargadas.
 function shouldHideProject(col, proy) {
   if (proyectoEstado[proy] === 'Cerrado') return true;
+  if (proyectosRecienAgregados.has(col + '||' + proy)) return false;
   return !projectHasAnyHours(col, proy);
 }
 
@@ -521,6 +537,91 @@ function allKnownProjectNames() {
   const set = new Set(Object.keys(proyectoEstado));
   Object.values(matrix).forEach(proyMap => Object.keys(proyMap).forEach(p => set.add(p)));
   return [...set].sort();
+}
+
+// ── Personas (activar/apagar) ───────────────────────────────────────────────
+let rolesRows = [];       // [{ persona, row (1-based), activo }]
+let activoColIdx = -1;
+let rolesHeaderLen = 0;
+const VALORES_INACTIVO = ['no', 'inactivo', '0', 'false'];
+
+async function loadRolesTable() {
+  const res = await gapi.client.sheets.spreadsheets.values.get({
+    spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_ROLES,
+  });
+  const rows = res.result.values || [];
+  const h = (rows[0] || []).map(x => x.trim().toLowerCase());
+  rolesHeaderLen = (rows[0] || []).length;
+  activoColIdx = h.indexOf('activo');
+  const iPersona = h.indexOf('persona');
+  rolesRows = rows.slice(1).map((r, i) => ({
+    persona: normalizaColaborador((r[iPersona] || '').trim()),
+    row: i + 2,
+    activo: activoColIdx >= 0 ? (r[activoColIdx] || '').trim() : '',
+  })).filter(p => p.persona && p.activo.toLowerCase() !== 'excluir');
+}
+
+async function openPersonasMgmt() {
+  document.getElementById('personasList').innerHTML = '<div class="state-msg"><div class="spinner"></div>Cargando…</div>';
+  document.getElementById('personasMgmtOverlay').classList.add('open');
+  try {
+    await loadRolesTable();
+    renderPersonasList();
+  } catch (err) {
+    console.error(err);
+    document.getElementById('personasList').innerHTML = `<div class="state-msg">⚠️ ${errMsg(err)}</div>`;
+  }
+}
+function closePersonasMgmt() {
+  document.getElementById('personasMgmtOverlay').classList.remove('open');
+}
+
+function renderPersonasList() {
+  const el = document.getElementById('personasList');
+  const lista = [...rolesRows].sort((a, b) => a.persona.localeCompare(b.persona));
+  el.innerHTML = lista.map(p => {
+    const activa = !VALORES_INACTIVO.includes(p.activo.toLowerCase());
+    return `<div class="catalog-row">
+      <span class="catalog-name">${p.persona}</span>
+      <label class="switch">
+        <input type="checkbox" ${activa ? 'checked' : ''} onchange="togglePersonaActiva('${escAttr(p.persona)}', this.checked)">
+        <span class="slider"></span>
+      </label>
+      <span class="catalog-status" style="color:${activa ? '#059669' : '#dc2626'}">${activa ? 'Activa' : 'Inactiva'}</span>
+    </div>`;
+  }).join('');
+}
+
+async function togglePersonaActiva(nombre, isActive) {
+  const p = rolesRows.find(x => x.persona === nombre);
+  if (!p) return;
+  const nuevo = isActive ? 'Si' : 'No';
+  try {
+    if (activoColIdx < 0) {
+      // Primera vez: se crea la columna Activo al final de Roles_Usuarios
+      activoColIdx = rolesHeaderLen;
+      await gapi.client.sheets.spreadsheets.values.update({
+        spreadsheetId: HapticaAuth.SPREADSHEET_ID,
+        range: `${SHEET_ROLES}!${colToLetter(activoColIdx)}1`,
+        valueInputOption: 'RAW', resource: { values: [['Activo']] },
+      });
+      rolesHeaderLen++;
+    }
+    await gapi.client.sheets.spreadsheets.values.update({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID,
+      range: `${SHEET_ROLES}!${colToLetter(activoColIdx)}${p.row}`,
+      valueInputOption: 'RAW', resource: { values: [[nuevo]] },
+    });
+    p.activo = nuevo;
+    hasActivoCol = true;
+    if (isActive) personasActivas.add(nombre); else personasActivas.delete(nombre);
+    renderMatrix();
+  } catch (err) {
+    console.error(err);
+    showToast('⚠️ No se pudo guardar: ' + errMsg(err), 'error');
+  } finally {
+    renderPersonasList();
+  }
 }
 
 function openProjectsMgmt() {
@@ -657,7 +758,7 @@ function renderMatrix() {
       proyectos = proyectos.filter(proy => !shouldHideProject(col, proy));
     }
     if (filtroProyecto) {
-      proyectos = proyectos.filter(proy => proy === filtroProyecto);
+      proyectos = proyectos.filter(proy => proy === filtroProyecto || proyectosRecienAgregados.has(col + '||' + proy));
     }
     if ((hideFinished || filtroProyecto) && !proyectos.length) return; // nadie que mostrar de esta persona
 
@@ -1105,11 +1206,24 @@ function closeModal() { document.getElementById('modalOverlay').classList.remove
 function confirmNewRow() {
   const proy = document.getElementById('modalProyecto').value.trim();
   if (!proy) { alert('Ingresa un nombre de proyecto.'); return; }
+  const key = modalPerson + '||' + proy;
   if (matrix[modalPerson] && matrix[modalPerson][proy]) {
-    alert(`${modalPerson} ya tiene el proyecto ${proy}.`); return;
+    if (proyectoEstado[proy] === 'Cerrado') {
+      alert(`${proy} está cerrado, por eso no se ve en la matriz. Reactívalo en "Gestionar proyectos".`); return;
+    }
+    if (!projectHasAnyHours(modalPerson, proy)) {
+      // Existía como fila vacía (agregada antes y ocultada por "Ocultar finalizados"): se vuelve a mostrar
+      proyectosRecienAgregados.add(key);
+      closeModal();
+      renderMatrix();
+      showToast(`${proy} ya estaba en la lista de ${modalPerson} sin horas; ahora se muestra`, 'success');
+      return;
+    }
+    alert(`${modalPerson} ya tiene el proyecto ${proy} con horas asignadas.`); return;
   }
   if (!matrix[modalPerson]) matrix[modalPerson] = {};
   matrix[modalPerson][proy] = {};
+  proyectosRecienAgregados.add(key);
   closeModal();
   renderMatrix();
 }
