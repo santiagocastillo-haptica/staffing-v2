@@ -89,6 +89,8 @@
     .modal-field input:focus, .modal-field select:focus { outline: none; border-color: #003237; }
     .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
     .row-person.sim td { background: #eff6ff; color: #1e3a8a; }
+    .row-person.vac td { background: #fdf2f8; color: #9d174d; }
+    .hire-row select { max-width: 220px; }
     .hrs-input { width: 44px; padding: 4px 2px; border: 1.5px solid transparent; border-radius: 5px; font-family: inherit; font-size: 12px; font-weight: 600; color: #1a2e35; text-align: center; background: transparent; transition: all 0.12s; }
     .hrs-input:hover { border-color: #d4dfe2; background: #fff; }
     .hrs-input:focus { outline: none; border-color: #003237; background: #fff; }
@@ -140,6 +142,7 @@
       <div class="toolbar-right">
         <button class="btn-secondary" onclick="resetEscenario()">↺ Reiniciar escenario</button>
         <button class="btn-secondary" onclick="addSalida()">－ Quitar Haptiqueño</button>
+        <button class="btn-secondary" onclick="openVacanteModal()">＋ Vacante</button>
         <button class="btn-primary" onclick="openProyectoModal()">🚀 Nuevo proyecto</button>
         <button class="btn-primary" onclick="addHire()">＋ Sumar Haptiqueño</button>
       </div>
@@ -151,6 +154,7 @@
       <h3>Escenario simulado</h3>
       <div class="hires-sub">Nada de esto se guarda: es solo para ver cómo cambian la carga y los FTEs. Puedes editar las horas de cualquier celda de la matriz (en naranja las que cambiaste) y agregar proyectos a una persona con ＋ agregar proyecto. Cada ingreso suma 1 FTE (40 h por semana); la capacidad de cada persona activa sale de la columna <b>Capacidad</b> de Roles_Usuarios.</div>
       <div class="scn-section" id="secHires" style="display:none"><div class="scn-title">Ingresos</div><div id="hiresList"></div></div>
+      <div class="scn-section" id="secVacantes" style="display:none"><div class="scn-title">Vacantes por cubrir</div><div id="vacantesList"></div></div>
       <div class="scn-section" id="secSalidas" style="display:none"><div class="scn-title">Salidas</div><div id="salidasList"></div></div>
       <div class="scn-section" id="secProyectos" style="display:none"><div class="scn-title">Proyectos nuevos</div><div id="proyectosList"></div></div>
     </div>
@@ -198,6 +202,29 @@
   </div>
 </div>
 
+<!-- Modal vacante (rol por cubrir en un proyecto existente) -->
+<div class="modal-overlay" id="vacanteModal">
+  <div class="modal" style="width:420px">
+    <h3>Nueva vacante</h3>
+    <div class="modal-hint">Un rol que falta cubrir en un proyecto (ej. el proyecto ya tiene Host pero falta el resto del equipo). Cuenta como demanda sin cubrir hasta que la asignes a alguien.</div>
+    <div class="modal-field">
+      <label>Proyecto</label>
+      <input type="text" id="vProyecto" list="vProyOptions" placeholder="Escribe para buscar…" autocomplete="off" />
+      <datalist id="vProyOptions"></datalist>
+    </div>
+    <div class="pm-grid">
+      <div class="modal-field"><label>Rol</label><select id="vRol"></select></div>
+      <div class="modal-field"><label>Horas por semana</label><input type="number" id="vHoras" min="1" step="1" value="8" /></div>
+      <div class="modal-field"><label>Semana de inicio</label><select id="vSemanaInicio"></select></div>
+      <div class="modal-field"><label>Duración (semanas)</label><input type="number" id="vDuracion" min="1" step="1" value="8" /></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeVacanteModal()">Cancelar</button>
+      <button class="btn-primary" onclick="confirmVacante()">✓ Agregar vacante</button>
+    </div>
+  </div>
+</div>
+
 <script src="shared/staffing-utils.js"></script>
 <script src="shared/auth.js"></script>
 <script src="shared/nav.js"></script>
@@ -222,6 +249,9 @@ let ajustes       = {};   // ajustes[personaKey][proyecto][semanaAnioKey] = hora
 let filasExtra    = {};   // personaKey -> Set(proyecto) filas agregadas a mano
 let demEf         = {};   // demanda efectiva = presupuestado + ajustes
 let modalPersona  = null;
+let vacantes      = [];   // [{ id, proyecto, rol, startKey, semanas, horasSemana }] — roles por cubrir en proyectos existentes
+const vacKey = v => '#v' + v.id;
+const esVacKey = k => k.startsWith('#v');
 const hireKey = h => '#h' + h.id;
 const esHireKey = k => k.startsWith('#h');
 function nombreDe(k) {
@@ -337,18 +367,19 @@ function activaEn(persona, monday) {
 
 function computeWeekly() {
   return weekRange.map(w => {
-    let asignada = 0, porReasignar = 0;
+    let asignada = 0, porReasignar = 0, vacantesH = 0;
     Object.keys(demEf).forEach(persona => {
       let h = 0;
       Object.values(demEf[persona]).forEach(m => { h += m[w.key] || 0; });
-      if (esHireKey(persona) || activaEn(persona, w.monday)) asignada += h; else porReasignar += h;
+      if (esVacKey(persona)) vacantesH += h;
+      else if (esHireKey(persona) || activaEn(persona, w.monday)) asignada += h; else porReasignar += h;
     });
     const simulada = proyectosSim.reduce((s, pr) => s + (pr.keys.has(w.key) ? pr.horasSemana : 0), 0);
     const nuevos = hires.filter(h => hireMonday(h) <= w.monday).length;
     const headcount = personasActivas.filter(x => activaEn(x, w.monday)).reduce((s, x) => s + capOf(x), 0) + nuevos; // en FTE
     const capacidad = headcount * HORAS_SEMANA;
-    const total = asignada + porReasignar + simulada;
-    return { w, asignada, porReasignar, simulada, demanda: total, headcount, nuevos, capacidad, carga: capacidad > 0 ? total / capacidad : null };
+    const total = asignada + porReasignar + simulada + vacantesH;
+    return { w, asignada, porReasignar, simulada, vacantes: vacantesH, demanda: total, headcount, nuevos, capacidad, carga: capacidad > 0 ? total / capacidad : null };
   });
 }
 
@@ -372,6 +403,11 @@ function renderHorizontes(weekly) {
     const demProm = sumDem / n;
     const headProm = ventana.reduce((a, x) => a + x.headcount, 0) / n;
     const carga = sumCap > 0 ? sumDem / sumCap : null;
+    const vacProm = ventana.reduce((a, x) => a + x.vacantes, 0) / n;
+    const filaVac = vacProm > 0.05
+      ? `<div class="hz-row">Vacantes sin cubrir <b>${fmt(vacProm)} h/sem <span style="font-size:12px;font-weight:600;color:#5a7a82">≈ ${(vacProm / HORAS_SEMANA).toFixed(1)} FTE</span></b></div>`
+      : '';
+
     const fte = demProm / (HORAS_SEMANA * objetivo);
     const brecha = fte - headProm;
     let veredicto;
@@ -384,6 +420,7 @@ function renderHorizontes(weekly) {
       <div class="hz-row">Demanda promedio <b>${fmt(demProm)} h/sem</b></div>
       <div class="hz-row">FTEs requeridos <b>${fte.toFixed(1)}</b></div>
       <div class="hz-row">Equipo promedio (FTE) <b>${headProm.toFixed(1)}</b></div>
+      ${filaVac}
       ${veredicto}
     </div>`;
   }).join('');
@@ -440,6 +477,19 @@ function renderEscenario() {
     </div>`;
   }).join('');
 
+  document.getElementById('secVacantes').style.display = vacantes.length ? 'block' : 'none';
+  const destinos = [
+    ...personasActivas.map(x => `<option value="${escAttr(x)}">${x}</option>`),
+    ...hires.map(h => `<option value="${hireKey(h)}">${h.nombre} (nuevo)</option>`),
+  ].join('');
+  document.getElementById('vacantesList').innerHTML = vacantes.map(v => `
+    <div class="hire-row">
+      <span class="scn-item">${v.proyecto} · ${v.rol}</span>
+      <span class="scn-meta">${v.horasSemana} h/sem × ${v.semanas} sem. desde ${v.startKey.replace('-', ' sem ')}</span>
+      <select onchange="asignarVacante(${v.id}, this.value)"><option value="">Asignar a…</option>${destinos}</select>
+      <button class="btn-remove" onclick="removeVacante(${v.id})">✕ Quitar</button>
+    </div>`).join('');
+
   document.getElementById('secProyectos').style.display = proyectosSim.length ? 'block' : 'none';
   document.getElementById('proyectosList').innerHTML = proyectosSim.map(pr => `
     <div class="hire-row">
@@ -448,7 +498,7 @@ function renderEscenario() {
       <button class="btn-remove" onclick="removeProyectoSim(${pr.id})">✕ Quitar</button>
     </div>`).join('');
 
-  document.getElementById('hiresCard').style.display = (hires.length || salidas.length || proyectosSim.length) ? 'block' : 'none';
+  document.getElementById('hiresCard').style.display = (hires.length || salidas.length || proyectosSim.length || vacantes.length) ? 'block' : 'none';
 }
 
 function buildDemEf() {
@@ -456,6 +506,13 @@ function buildDemEf() {
   Object.keys(demanda).forEach(p => {
     out[p] = {};
     Object.keys(demanda[p]).forEach(pr => { out[p][pr] = { ...demanda[p][pr] }; });
+  });
+  vacantes.forEach(v => {
+    const full = getFullWeekRange();
+    const idx = full.findIndex(w => w.key === v.startKey);
+    const m = {};
+    full.slice(Math.max(idx, 0), Math.max(idx, 0) + v.semanas).forEach(w => { m[w.key] = v.horasSemana; });
+    out[vacKey(v)] = { [v.proyecto]: m };
   });
   Object.keys(ajustes).forEach(p => {
     out[p] = out[p] || {};
@@ -510,6 +567,60 @@ function confirmAddProy() {
   renderAllKeepScroll();
 }
 
+// ── Vacantes: rol por cubrir en un proyecto existente
+function openVacanteModal() {
+  const nombres = new Set();
+  Object.values(demanda).forEach(m => Object.keys(m).forEach(pr => nombres.add(pr)));
+  document.getElementById('vProyOptions').innerHTML = [...nombres].sort().map(n => `<option value="${escAttr(n)}"></option>`).join('');
+  document.getElementById('vRol').innerHTML = STAFFING_ROLES.map(r => `<option>${r}</option>`).join('');
+  document.getElementById('vSemanaInicio').innerHTML = weekRange.map(w =>
+    `<option value="${w.key}">${semanaAnioLabelConFecha(w.semana, w.año)}</option>`).join('');
+  document.getElementById('vSemanaInicio').value = defaultStartKey();
+  document.getElementById('vProyecto').value = '';
+  document.getElementById('vHoras').value = 8;
+  document.getElementById('vDuracion').value = 8;
+  document.getElementById('vacanteModal').classList.add('open');
+}
+function closeVacanteModal() { document.getElementById('vacanteModal').classList.remove('open'); }
+
+function confirmVacante() {
+  const proyecto = document.getElementById('vProyecto').value.trim();
+  const horas = Math.round(Number(document.getElementById('vHoras').value) || 0);
+  const semanas = Math.max(1, Math.round(Number(document.getElementById('vDuracion').value) || 1));
+  if (!proyecto) { alert('Elige o escribe el proyecto.'); return; }
+  if (horas <= 0) { alert('Ingresa las horas por semana del rol.'); return; }
+  vacantes.push({
+    id: ++hireSeq, proyecto, rol: document.getElementById('vRol').value,
+    startKey: document.getElementById('vSemanaInicio').value, semanas, horasSemana: horas,
+  });
+  closeVacanteModal();
+  renderEscenario();
+  renderAll();
+}
+
+function removeVacante(id) {
+  const v = vacantes.find(x => x.id === id);
+  if (v) delete ajustes[vacKey(v)];
+  vacantes = vacantes.filter(x => x.id !== id);
+  renderEscenario();
+  renderAll();
+}
+
+// Cubre la vacante: sus horas (con los ajustes que tenga) pasan a la persona elegida
+function asignarVacante(id, personaKey) {
+  if (!personaKey) return;
+  const v = vacantes.find(x => x.id === id);
+  if (!v) return;
+  const horas = (demEf[vacKey(v)] && demEf[vacKey(v)][v.proyecto]) || {};
+  if (!ajustes[personaKey]) ajustes[personaKey] = {};
+  if (!ajustes[personaKey][v.proyecto]) ajustes[personaKey][v.proyecto] = {};
+  Object.keys(horas).forEach(k => {
+    const actual = (demEf[personaKey] && demEf[personaKey][v.proyecto] && demEf[personaKey][v.proyecto][k]) || 0;
+    ajustes[personaKey][v.proyecto][k] = actual + horas[k];
+  });
+  removeVacante(id);
+}
+
 function onTargetChange() { renderAll(); }
 
 function defaultStartKey() {
@@ -532,7 +643,7 @@ function onSalidaStart(id, v) { const s = salidas.find(x => x.id === id); if (s)
 function removeProyectoSim(id) { proyectosSim = proyectosSim.filter(x => x.id !== id); renderEscenario(); renderAll(); }
 
 function resetEscenario() {
-  hires = []; salidas = []; proyectosSim = []; ajustes = {}; filasExtra = {};
+  hires = []; salidas = []; proyectosSim = []; vacantes = []; ajustes = {}; filasExtra = {};
   renderEscenario();
   renderAll();
 }
@@ -667,7 +778,7 @@ function renderMatrix(weekly) {
   hires.forEach(h => { tbody += filaPersona(hireKey(h), 'sim', 1, true); });
 
   // Horas asignadas a quienes ya no están: hay que reasignarlas
-  const inactivas = Object.keys(demEf).filter(p => !esHireKey(p) && !personasActivas.includes(p));
+  const inactivas = Object.keys(demEf).filter(p => !esHireKey(p) && !esVacKey(p) && !personasActivas.includes(p));
   const hayInact = inactivas.some(p => proyectosDe(p).length);
   if (hayInact) {
     const sumInact = k => inactivas.reduce((s, p) => s + totalPersonaSemana(p, k), 0);
@@ -683,6 +794,22 @@ function renderMatrix(weekly) {
         weekRange.forEach(w => { html += celdaInput(persona, proy, w); });
         html += '</tr>';
       });
+    });
+    tbody += html;
+  }
+
+  if (vacantes.length) {
+    const sumVac = k => vacantes.reduce((s, v) => s + totalPersonaSemana(vacKey(v), k), 0);
+    let html = `<tr class="row-person vac"><td class="col-name">Vacantes por cubrir</td>`;
+    weekRange.forEach(w => {
+      const hrs = sumVac(w.key);
+      html += `<td>${hrs > 0 ? fmt(hrs) + ' h' : ''}</td>`;
+    });
+    html += '</tr>';
+    vacantes.forEach(v => {
+      html += `<tr class="row-project"><td class="col-name">${v.proyecto} · ${v.rol}</td>`;
+      weekRange.forEach(w => { html += celdaInput(vacKey(v), v.proyecto, w); });
+      html += '</tr>';
     });
     tbody += html;
   }
