@@ -273,6 +273,35 @@ async function fetchPersonasInactivas() {
   } catch (e) { return { hasActivoCol: false, inactivas: new Set() }; }
 }
 
+// Capacidad por persona (fracción de su tiempo disponible para proyectos) desde
+// la columna opcional "Capacidad" de Roles_Usuarios. Acepta 70%, 0.7 o 70.
+// Vacío / sin columna = 1 (100%). Devuelve { [persona]: fracción } solo con las
+// que tienen un valor distinto de 1.
+async function fetchCapacidadesPersonas() {
+  try {
+    const res = await gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_ROLES,
+    });
+    const rows = res.result.values || [];
+    if (rows.length < 2) return {};
+    const h = rows[0].map(x => x.trim().toLowerCase());
+    const iPersona = h.indexOf('persona');
+    const iCap = h.indexOf('capacidad');
+    if (iPersona === -1 || iCap === -1) return {};
+    const out = {};
+    rows.slice(1).forEach(r => {
+      const nombre = normalizaColaborador((r[iPersona] || '').trim());
+      const raw = (r[iCap] || '').toString().trim().replace(',', '.');
+      if (!nombre || !raw) return;
+      let v = parseFloat(raw);
+      if (isNaN(v)) return;
+      if (raw.endsWith('%') || v > 1) v = v / 100;
+      if (v > 0 && v < 1) out[nombre] = Math.min(v, 1);
+    });
+    return out;
+  } catch (e) { return {}; }
+}
+
 async function fetchAllPersonas() {
   try {
     const res = await gapi.client.sheets.spreadsheets.values.get({

@@ -117,7 +117,7 @@
 
     <div class="hires-card" id="hiresCard" style="display:none">
       <h3>Haptiqueños hipotéticos</h3>
-      <div class="hires-sub">Cada uno suma 40 h de capacidad por semana desde su semana de ingreso. No se guarda: es solo para simular.</div>
+      <div class="hires-sub">Cada uno suma 1 FTE (40 h por semana) desde su semana de ingreso. No se guarda: es solo para simular. La capacidad de cada persona activa sale de la columna <b>Capacidad</b> de Roles_Usuarios.</div>
       <div id="hiresList"></div>
     </div>
 
@@ -140,6 +140,7 @@ const HORIZONTES = [
 
 let demanda       = {};   // demanda[persona][proyecto][semanaAnioKey] = horas presupuestadas
 let personasActivas = []; // en Roles_Usuarios y sin marca de inactiva
+let capacidades   = {};   // { persona: fracción de tiempo disponible } — ausente = 1
 let weekRange     = [];   // desde el mes actual hacia adelante
 let proyectoEstado = {};
 let hires         = [];   // [{ id, nombre, startKey }] — solo en memoria
@@ -151,10 +152,11 @@ async function loadData() {
   document.getElementById('matrixContainer').innerHTML =
     '<div class="state-msg"><div class="spinner"></div>Cargando datos…</div>';
   try {
-    const [dataRes, todas, estado] = await Promise.all([
+    const [dataRes, todas, estado, caps] = await Promise.all([
       gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_DATA }),
       fetchAllPersonas(),
       fetchPersonasInactivas(),
+      fetchCapacidadesPersonas(),
       loadProyectosCatalog(),
     ]);
 
@@ -175,6 +177,7 @@ async function loadData() {
     }).filter(r => r.semana && r.colaborador);
 
     personasActivas = todas.filter(p => !estado.inactivas.has(p)).sort();
+    capacidades = caps;
 
     buildWeekRange();
     buildDemanda();
@@ -232,6 +235,8 @@ function buildDemanda() {
 }
 
 // ── Cálculo semanal: demanda, capacidad y carga del equipo ──────────────────
+function capOf(persona) { return capacidades[persona] || 1; }
+
 function hireMonday(h) {
   const w = weekRange.find(x => x.key === h.startKey);
   return w ? w.monday : Infinity;
@@ -247,7 +252,7 @@ function computeWeekly() {
       if (activas.has(persona)) asignada += h; else porReasignar += h;
     });
     const nuevos = hires.filter(h => hireMonday(h) <= w.monday).length;
-    const headcount = personasActivas.length + nuevos;
+    const headcount = personasActivas.reduce((s, x) => s + capOf(x), 0) + nuevos; // en FTE
     const capacidad = headcount * HORAS_SEMANA;
     const total = asignada + porReasignar;
     return { w, asignada, porReasignar, demanda: total, headcount, nuevos, capacidad, carga: capacidad > 0 ? total / capacidad : null };
@@ -285,7 +290,7 @@ function renderHorizontes(weekly) {
       <div class="hz-row">Carga promedio <b><span class="pct-cell ${pctClass(carga)}" style="font-size:18px">${fmtPct(carga) || '—'}</span></b></div>
       <div class="hz-row">Demanda promedio <b>${fmt(demProm)} h/sem</b></div>
       <div class="hz-row">FTEs requeridos <b>${fte.toFixed(1)}</b></div>
-      <div class="hz-row">Equipo promedio <b>${headProm.toFixed(1)}</b></div>
+      <div class="hz-row">Equipo promedio (FTE) <b>${headProm.toFixed(1)}</b></div>
       ${veredicto}
     </div>`;
   }).join('');
@@ -385,11 +390,12 @@ function renderMatrix(weekly) {
     Object.values(demanda[persona] || {}).reduce((s, m) => s + (m[k] || 0), 0);
 
   let tbody = '<tbody>';
-  const filaPersona = (nombre, cls, calcHoras, proyectos) => {
-    let html = `<tr class="row-person ${cls}"><td class="col-name">${nombre}</td>`;
+  const filaPersona = (nombre, cls, calcHoras, proyectos, cap = 1) => {
+    const etiqueta = cap < 1 ? `${nombre} <span style="font-weight:500;color:#5a7a82">· ${Math.round(cap * 100)}%</span>` : nombre;
+    let html = `<tr class="row-person ${cls}"><td class="col-name">${etiqueta}</td>`;
     weekRange.forEach(w => {
       const hrs = calcHoras(w.key);
-      const pct = hrs / HORAS_SEMANA;
+      const pct = hrs / (HORAS_SEMANA * cap);
       html += `<td style="${isCurWeek(w) ? 'background:#fff3ee' : ''}">${hrs > 0 ? `<span class="pct-cell ${pctClass(pct)}">${fmtPct(pct)}</span>` : ''}</td>`;
     });
     html += '</tr>';
@@ -406,7 +412,7 @@ function renderMatrix(weekly) {
 
   personasActivas.forEach(persona => {
     const proys = sortProjects(Object.keys(demanda[persona] || {})).filter(p => horasEn(persona, p));
-    tbody += filaPersona(persona, '', k => totalPersonaSemana(persona, k), proys.map(p => [persona, p]));
+    tbody += filaPersona(persona, '', k => totalPersonaSemana(persona, k), proys.map(p => [persona, p]), capOf(persona));
   });
 
   // Horas asignadas a quienes ya no están: hay que reasignarlas
