@@ -101,6 +101,12 @@
     .row-add td.col-name { border-right: 2px solid #003237; }
     .btn-add-row { background: none; border: none; cursor: pointer; color: #9ca3af; font-size: 11px; font-weight: 500; padding: 4px 12px; font-family: inherit; }
     .btn-add-row:hover { color: #003237; }
+    .help-card { background: #f0f7f8; border: 1px solid #d4e6ea; border-radius: 12px; padding: 12px 18px; margin-bottom: 16px; }
+    .help-card summary { cursor: pointer; font-size: 13px; font-weight: 700; color: #003237; }
+    .help-body { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 12px; font-size: 12px; color: #374151; line-height: 1.55; }
+    .help-body h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #5a7a82; margin-bottom: 4px; }
+    .help-body ul { padding-left: 16px; }
+    @media (max-width: 900px) { .help-body { grid-template-columns: 1fr; } }
     @media (max-width: 900px) { .horizon-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -147,6 +153,35 @@
         <button class="btn-primary" onclick="addHire()">＋ Sumar Haptiqueño</button>
       </div>
     </div>
+
+    <details class="help-card" id="helpCard" open>
+      <summary>¿Cómo se usa Planeación Equipo?</summary>
+      <div class="help-body">
+        <div>
+          <h4>1. Qué es</h4>
+          Una simulación para saber si el equipo alcanza para lo que viene. Parte de las horas presupuestadas reales y de las personas activas.
+          <b>Nada de lo que hagas aquí se guarda</b>: al recargar o con ↺ Reiniciar escenario, todo vuelve al estado real.
+        </div>
+        <div>
+          <h4>2. Cómo leer el resultado</h4>
+          <ul>
+            <li>Las <b>3 tarjetas de arriba</b> (1, 3 y 6 meses) son la respuesta: carga promedio, FTEs requeridos y equipo promedio.</li>
+            <li>Si dice <b>"Faltan ~X FTE"</b>, la demanda supera al equipo; "Sobran" es lo contrario.</li>
+            <li><b>Ocupación objetivo</b> (85%) deja holgura para tiempos no facturables; bájala o súbela para ver el efecto.</li>
+            <li>La matriz muestra la demanda, la capacidad y la carga semana a semana.</li>
+          </ul>
+        </div>
+        <div>
+          <h4>3. Cómo simular</h4>
+          <ul>
+            <li><b>＋ Sumar Haptiqueño</b> / <b>－ Quitar Haptiqueño</b>: un ingreso o una salida desde la semana que elijas.</li>
+            <li><b>🚀 Nuevo proyecto</b>: un proyecto que aún no existe, con sus horas por rol.</li>
+            <li><b>＋ Vacante</b>: un rol que falta cubrir en un proyecto ya creado; luego puedes asignarlo a alguien.</li>
+            <li>Escribe directamente en cualquier celda para cambiar horas, o usa <b>＋ agregar proyecto</b> bajo una persona.</li>
+          </ul>
+        </div>
+      </div>
+    </details>
 
     <div class="horizon-grid" id="horizonGrid"></div>
 
@@ -859,6 +894,14 @@ function updateTimestamp() {
   document.getElementById('updateNotice').textContent =
     `Datos al ${d.toLocaleString('es-CL', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
 }
+
+(function initHelp() {
+  const el = document.getElementById('helpCard');
+  try { if (localStorage.getItem('planeacionHelpCerrada') === '1') el.removeAttribute('open'); } catch (e) {}
+  el.addEventListener('toggle', () => {
+    try { localStorage.setItem('planeacionHelpCerrada', el.open ? '0' : '1'); } catch (e) {}
+  });
+})();
 
 HapticaAuth.init({
   requiredView: 'planeacion',
