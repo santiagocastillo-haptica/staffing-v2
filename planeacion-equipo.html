@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Planeación Equipo · Háptica</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="shared/theme.css" />
+  <style>
+    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    .toolbar-left, .toolbar-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .target-field { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #5a7a82; }
+    .target-field input {
+      width: 64px; padding: 7px 8px; border: 1.5px solid #d4dfe2; border-radius: 7px;
+      font-family: inherit; font-size: 13px; font-weight: 700; color: #1a2e35; text-align: center;
+    }
+    .target-field input:focus { outline: none; border-color: #003237; }
+
+    /* ── Tarjetas de horizonte ─────────────────────── */
+    .horizon-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+    .horizon-card { background: #fff; border-radius: 12px; padding: 18px 22px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .horizon-card h3 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #5a7a82; margin-bottom: 12px; }
+    .horizon-card h3 span { font-weight: 500; text-transform: none; letter-spacing: 0; color: #9ca3af; }
+    .hz-row { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px solid #f0f4f5; font-size: 12px; color: #5a7a82; }
+    .hz-row:last-of-type { border-bottom: none; }
+    .hz-row b { font-size: 18px; font-weight: 800; color: #1a2e35; letter-spacing: -0.5px; }
+    .hz-verdict { margin-top: 10px; padding: 7px 10px; border-radius: 8px; font-size: 12px; font-weight: 700; text-align: center; }
+    .hz-short { background: #fee2e2; color: #991b1b; }
+    .hz-ok    { background: #d1fae5; color: #065f46; }
+    .hz-over  { background: #fef3c7; color: #92400e; }
+
+    /* ── Haptiqueños hipotéticos ────────────────────── */
+    .hires-card { background: #fff; border-radius: 12px; padding: 16px 22px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 20px; }
+    .hires-card h3 { font-size: 13px; font-weight: 700; color: #1a2e35; margin-bottom: 4px; }
+    .hires-sub { font-size: 12px; color: #6b7280; margin-bottom: 12px; }
+    .hire-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; flex-wrap: wrap; }
+    .hire-row input[type=text], .hire-row select {
+      padding: 7px 10px; border: 1.5px solid #d4dfe2; border-radius: 7px;
+      font-family: inherit; font-size: 12px; font-weight: 600; color: #1a2e35; background: #fff;
+    }
+    .hire-row input[type=text] { width: 200px; }
+    .hire-row label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; color: #5a7a82; }
+    .btn-remove { border: none; background: #fee2e2; color: #991b1b; border-radius: 6px; padding: 6px 10px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit; }
+
+    /* ── Matriz (mismo look de Editar Presupuesto) ──── */
+    .matrix-wrap { overflow-x: auto; overflow-y: auto; max-height: calc(100vh - 260px); border-radius: 12px; box-shadow: 0 1px 6px rgba(0,0,0,0.08); }
+    .matrix { border-collapse: collapse; font-size: 12px; background: #fff; min-width: 100%; }
+    .matrix .col-name {
+      position: sticky; left: 0; z-index: 2;
+      background: #fff; min-width: 200px; max-width: 220px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .matrix thead .col-name { background: #1a2e35; z-index: 4; }
+    .matrix thead tr th { padding: 0; text-align: center; font-weight: 600; white-space: nowrap; position: sticky; z-index: 3; }
+    .row-month th { background: #1a2e35; color: rgba(255,255,255,0.7); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; padding: 7px 4px; border-right: 1px solid #2d4350; }
+    .row-dates th { background: #243b44; color: rgba(255,255,255,0.5); font-size: 10px; font-weight: 500; padding: 4px 4px; border-right: 1px solid #2d4350; }
+    .row-weeks th { background: #1a2e35; color: #fff; font-size: 13px; font-weight: 800; padding: 6px 4px; border-right: 1px solid #2d4350; min-width: 52px; }
+    .row-team th { background: #f0f4f5; color: #374151; font-size: 11px; font-weight: 700; padding: 5px 4px; border-right: 1px solid #e2e8ea; border-bottom: 1px solid #e2e8ea; }
+    .row-team.last th { border-bottom: 2px solid #d4dfe2; }
+    .row-team th.col-name { text-align: left; padding-left: 12px; color: #5a7a82; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; background: #f0f4f5; }
+    .row-person td { background: #eef6f7; font-weight: 700; font-size: 12px; color: #003237; padding: 7px 4px; border-bottom: 1px solid #d4dfe2; text-align: center; }
+    .row-person td.col-name { text-align: left; padding-left: 12px; font-size: 13px; border-right: 2px solid #003237; }
+    .row-person.unassigned td { background: #fff7ed; color: #9a3412; }
+    .row-project td { background: #fff; padding: 4px; color: #374151; font-weight: 600; border-bottom: 1px solid #f0f4f5; border-right: 1px solid #f0f4f5; text-align: center; }
+    .row-project td.col-name { text-align: left; padding-left: 22px; font-weight: 500; border-right: 2px solid #003237; }
+    .row-project:hover td { background: #f8fbfc; }
+    .pct-cell { font-size: 11px; font-weight: 700; }
+    .pct-low  { color: #059669; }
+    .pct-ok   { color: #003237; }
+    .pct-warn { color: #d97706; }
+    .pct-over { color: #dc2626; background: #fee2e2 !important; border-radius: 4px; padding: 1px 4px; }
+    .hire-cap { color: #0072C1; font-weight: 700; }
+    @media (max-width: 900px) { .horizon-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>Planeación Equipo</h1>
+    <div class="subtitle">Carga futura del equipo y FTEs requeridos — simulación, no modifica datos</div>
+  </div>
+  <div class="header-right" id="navContainer"></div>
+</div>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="login-screen">
+    <div class="login-card">
+      <h2>Acceso restringido</h2>
+      <p>Esta herramienta está disponible solo para el equipo de dirección de Háptica.</p>
+      <button class="btn-google" id="btnLogin">
+        <svg viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+        Iniciar sesión con Google
+      </button>
+      <div class="access-denied" id="accessDenied"></div>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="content">
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <div class="update-notice" id="updateNotice">Cargando datos…</div>
+        <label class="target-field">Ocupación objetivo
+          <input type="number" id="targetPct" min="30" max="100" step="1" value="85" oninput="onTargetChange()" /> %
+        </label>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn-primary" onclick="addHire()">＋ Sumar Haptiqueño</button>
+      </div>
+    </div>
+
+    <div class="horizon-grid" id="horizonGrid"></div>
+
+    <div class="hires-card" id="hiresCard" style="display:none">
+      <h3>Haptiqueños hipotéticos</h3>
+      <div class="hires-sub">Cada uno suma 40 h de capacidad por semana desde su semana de ingreso. No se guarda: es solo para simular.</div>
+      <div id="hiresList"></div>
+    </div>
+
+    <div id="matrixContainer">
+      <div class="state-msg"><div class="spinner"></div>Cargando…</div>
+    </div>
+  </div>
+</div>
+
+<script src="shared/staffing-utils.js"></script>
+<script src="shared/auth.js"></script>
+<script src="shared/nav.js"></script>
+<script>
+const HORAS_SEMANA = 40;
+const HORIZONTES = [
+  { label: 'Próximo mes',      semanas: 4,  nota: '4 semanas' },
+  { label: 'Próximos 3 meses', semanas: 13, nota: '13 semanas' },
+  { label: 'Próximos 6 meses', semanas: 26, nota: '26 semanas' },
+];
+
+let demanda       = {};   // demanda[persona][proyecto][semanaAnioKey] = horas presupuestadas
+let personasActivas = []; // en Roles_Usuarios y sin marca de inactiva
+let weekRange     = [];   // desde el mes actual hacia adelante
+let proyectoEstado = {};
+let hires         = [];   // [{ id, nombre, startKey }] — solo en memoria
+let hireSeq       = 0;
+let sheetRows     = [];
+let colIdx        = {};
+
+async function loadData() {
+  document.getElementById('matrixContainer').innerHTML =
+    '<div class="state-msg"><div class="spinner"></div>Cargando datos…</div>';
+  try {
+    const [dataRes, todas, estado] = await Promise.all([
+      gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_DATA }),
+      fetchAllPersonas(),
+      fetchPersonasInactivas(),
+      loadProyectosCatalog(),
+    ]);
+
+    const rows = dataRes.result.values || [];
+    if (!rows.length) throw new Error('Sheet vacío');
+    const headers = rows[0].map(h => h.trim().toLowerCase());
+    colIdx = {};
+    headers.forEach((h, i) => { colIdx[h] = i; });
+
+    sheetRows = rows.slice(1).map(r => {
+      const obj = {};
+      headers.forEach((h, j) => { obj[h] = r[j] ?? ''; });
+      obj.colaborador = normalizaColaborador(obj.colaborador);
+      obj.semana = Number(obj.semana) || null;
+      obj.año = Number(obj.año) || (obj.semana ? inferAnioLegacy(obj.semana) : null);
+      obj.horaspresupuestadas = Number(obj.horaspresupuestadas) || 0;
+      return obj;
+    }).filter(r => r.semana && r.colaborador);
+
+    personasActivas = todas.filter(p => !estado.inactivas.has(p)).sort();
+
+    buildWeekRange();
+    buildDemanda();
+    renderAll();
+    renderHires();
+    updateTimestamp();
+  } catch (err) {
+    console.error(err);
+    document.getElementById('matrixContainer').innerHTML =
+      `<div class="state-msg">⚠️ Error al cargar datos.<br><small>${errMsg(err)}</small></div>`;
+  }
+}
+
+async function loadProyectosCatalog() {
+  proyectoEstado = {};
+  try {
+    const res = await gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_PROYECTOS,
+    });
+    const rows = res.result.values || [];
+    if (rows.length < 2) return;
+    const h = rows[0].map(x => x.trim().toLowerCase());
+    const iProy = h.indexOf('proyecto'), iEstado = h.indexOf('estado');
+    if (iProy === -1) return;
+    rows.slice(1).forEach(r => {
+      const name = (r[iProy] || '').trim();
+      if (name) proyectoEstado[name] = (r[iEstado] || '').trim() || 'Activo';
+    });
+  } catch (e) { /* pestaña Proyectos opcional */ }
+}
+
+// Mes actual en adelante (igual que Editar Presupuesto); la semana actual siempre incluida.
+function buildWeekRange() {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const cur = getCurrentIsoYearWeek();
+  const curMonday = getWeekMonday(cur.semana, cur.año).getTime();
+  const start = Math.min(monthStart, curMonday);
+  weekRange = getFullWeekRange().filter(w => w.monday >= start);
+}
+
+// Demanda = horas presupuestadas de proyectos no cerrados, de cualquier persona
+// (incluso inactivas: son horas que hay que reasignar).
+function buildDemanda() {
+  demanda = {};
+  sheetRows.forEach(r => {
+    if (!r.horaspresupuestadas) return;
+    const proy = r.proyecto || '—';
+    if (proyectoEstado[proy] === 'Cerrado') return;
+    const key = semanaAnioKey(r.semana, r.año);
+    if (!demanda[r.colaborador]) demanda[r.colaborador] = {};
+    if (!demanda[r.colaborador][proy]) demanda[r.colaborador][proy] = {};
+    demanda[r.colaborador][proy][key] = (demanda[r.colaborador][proy][key] || 0) + r.horaspresupuestadas;
+  });
+}
+
+// ── Cálculo semanal: demanda, capacidad y carga del equipo ──────────────────
+function hireMonday(h) {
+  const w = weekRange.find(x => x.key === h.startKey);
+  return w ? w.monday : Infinity;
+}
+
+function computeWeekly() {
+  const activas = new Set(personasActivas);
+  return weekRange.map(w => {
+    let asignada = 0, porReasignar = 0;
+    Object.keys(demanda).forEach(persona => {
+      let h = 0;
+      Object.values(demanda[persona]).forEach(m => { h += m[w.key] || 0; });
+      if (activas.has(persona)) asignada += h; else porReasignar += h;
+    });
+    const nuevos = hires.filter(h => hireMonday(h) <= w.monday).length;
+    const headcount = personasActivas.length + nuevos;
+    const capacidad = headcount * HORAS_SEMANA;
+    const total = asignada + porReasignar;
+    return { w, asignada, porReasignar, demanda: total, headcount, nuevos, capacidad, carga: capacidad > 0 ? total / capacidad : null };
+  });
+}
+
+function targetFraction() {
+  const v = Number(document.getElementById('targetPct').value);
+  return Math.min(Math.max(v || 85, 30), 100) / 100;
+}
+
+function renderHorizontes(weekly) {
+  const cur = getCurrentIsoYearWeek();
+  const curMonday = getWeekMonday(cur.semana, cur.año).getTime();
+  const futuras = weekly.filter(x => x.w.monday >= curMonday);
+  const objetivo = targetFraction();
+
+  document.getElementById('horizonGrid').innerHTML = HORIZONTES.map(hz => {
+    const ventana = futuras.slice(0, hz.semanas);
+    if (!ventana.length) return '';
+    const n = ventana.length;
+    const sumDem = ventana.reduce((a, x) => a + x.demanda, 0);
+    const sumCap = ventana.reduce((a, x) => a + x.capacidad, 0);
+    const demProm = sumDem / n;
+    const headProm = ventana.reduce((a, x) => a + x.headcount, 0) / n;
+    const carga = sumCap > 0 ? sumDem / sumCap : null;
+    const fte = demProm / (HORAS_SEMANA * objetivo);
+    const brecha = fte - headProm;
+    let veredicto;
+    if (brecha > 0.5)       veredicto = `<div class="hz-verdict hz-short">Faltan ~${brecha.toFixed(1)} FTE</div>`;
+    else if (brecha < -0.5) veredicto = `<div class="hz-verdict hz-over">Sobran ~${(-brecha).toFixed(1)} FTE</div>`;
+    else                    veredicto = `<div class="hz-verdict hz-ok">Equipo balanceado</div>`;
+    return `<div class="horizon-card">
+      <h3>${hz.label} <span>· ${n < hz.semanas ? n + ' sem. disponibles' : hz.nota}</span></h3>
+      <div class="hz-row">Carga promedio <b><span class="pct-cell ${pctClass(carga)}" style="font-size:18px">${fmtPct(carga) || '—'}</span></b></div>
+      <div class="hz-row">Demanda promedio <b>${fmt(demProm)} h/sem</b></div>
+      <div class="hz-row">FTEs requeridos <b>${fte.toFixed(1)}</b></div>
+      <div class="hz-row">Equipo promedio <b>${headProm.toFixed(1)}</b></div>
+      ${veredicto}
+    </div>`;
+  }).join('');
+}
+
+// ── Haptiqueños hipotéticos ─────────────────────────────────────────────────
+function addHire() {
+  const cur = getCurrentIsoYearWeek();
+  const idx = weekRange.findIndex(w => w.semana === cur.semana && w.año === cur.año);
+  const start = weekRange[Math.min(Math.max(idx, 0) + 4, weekRange.length - 1)];
+  hires.push({ id: ++hireSeq, nombre: `Nuevo Haptiqueño ${hireSeq}`, startKey: start.key });
+  renderHires();
+  renderAll();
+}
+
+function removeHire(id) {
+  hires = hires.filter(h => h.id !== id);
+  renderHires();
+  renderAll();
+}
+
+function onHireName(id, value) {
+  const h = hires.find(x => x.id === id);
+  if (h) { h.nombre = value; renderAll(); }
+}
+function onHireStart(id, value) {
+  const h = hires.find(x => x.id === id);
+  if (h) { h.startKey = value; renderAll(); }
+}
+
+function renderHires() {
+  const card = document.getElementById('hiresCard');
+  card.style.display = hires.length ? 'block' : 'none';
+  const opts = h => weekRange.map(w =>
+    `<option value="${w.key}" ${w.key === h.startKey ? 'selected' : ''}>${semanaAnioLabelConFecha(w.semana, w.año)}</option>`).join('');
+  document.getElementById('hiresList').innerHTML = hires.map(h => `
+    <div class="hire-row">
+      <input type="text" value="${escAttr(h.nombre)}" oninput="onHireName(${h.id}, this.value)" />
+      <label>Ingresa en</label>
+      <select onchange="onHireStart(${h.id}, this.value)">${opts(h)}</select>
+      <button class="btn-remove" onclick="removeHire(${h.id})">✕ Quitar</button>
+    </div>`).join('');
+}
+
+function onTargetChange() { renderAll(); }
+
+// ── Render ──────────────────────────────────────────────────────────────────
+function renderAll() {
+  const weekly = computeWeekly();
+  renderHorizontes(weekly);
+  renderMatrix(weekly);
+}
+
+function renderMatrix(weekly) {
+  const monthGroups = [];
+  weekRange.forEach(w => {
+    const { month, year } = weekMonthYear(w.semana, w.año);
+    const gkey = `${year}-${month}`;
+    if (!monthGroups.length || monthGroups[monthGroups.length - 1].gkey !== gkey) {
+      monthGroups.push({ gkey, label: MONTHS_ES[month], count: 1 });
+    } else {
+      monthGroups[monthGroups.length - 1].count++;
+    }
+  });
+  const cur = getCurrentIsoYearWeek();
+  const isCurWeek = w => w.semana === cur.semana && w.año === cur.año;
+
+  let thead = '<thead>';
+  thead += '<tr class="row-month"><th class="col-name"></th>';
+  monthGroups.forEach(g => { thead += `<th colspan="${g.count}">${g.label}</th>`; });
+  thead += '</tr>';
+  thead += '<tr class="row-dates"><th class="col-name"></th>';
+  weekRange.forEach(w => { thead += `<th>${weekDateLabel(w.semana, w.año)}</th>`; });
+  thead += '</tr>';
+  thead += '<tr class="row-weeks"><th class="col-name"></th>';
+  weekRange.forEach(w => {
+    thead += `<th style="${isCurWeek(w) ? 'background:#FA4616;color:#fff' : ''}">${w.semana}<br><span style="font-size:9px;font-weight:600;opacity:.7">${w.año}</span></th>`;
+  });
+  thead += '</tr>';
+
+  thead += '<tr class="row-team"><th class="col-name">Demanda (h)</th>';
+  weekly.forEach(x => { thead += `<th>${x.demanda ? fmt(x.demanda) : ''}</th>`; });
+  thead += '</tr>';
+  thead += '<tr class="row-team"><th class="col-name">Capacidad (h)</th>';
+  weekly.forEach(x => { thead += `<th class="${x.nuevos ? 'hire-cap' : ''}">${fmt(x.capacidad)}</th>`; });
+  thead += '</tr>';
+  thead += '<tr class="row-team last"><th class="col-name">Carga del equipo</th>';
+  weekly.forEach(x => {
+    thead += `<th>${x.carga === null ? '' : `<span class="pct-cell ${pctClass(x.carga)}">${fmtPct(x.carga)}</span>`}</th>`;
+  });
+  thead += '</tr>';
+  thead += '</thead>';
+
+  const keys = weekRange.map(w => w.key);
+  const horasEn = (persona, proy) => keys.some(k => (demanda[persona] && demanda[persona][proy] && demanda[persona][proy][k]) > 0);
+  const totalPersonaSemana = (persona, k) =>
+    Object.values(demanda[persona] || {}).reduce((s, m) => s + (m[k] || 0), 0);
+
+  let tbody = '<tbody>';
+  const filaPersona = (nombre, cls, calcHoras, proyectos) => {
+    let html = `<tr class="row-person ${cls}"><td class="col-name">${nombre}</td>`;
+    weekRange.forEach(w => {
+      const hrs = calcHoras(w.key);
+      const pct = hrs / HORAS_SEMANA;
+      html += `<td style="${isCurWeek(w) ? 'background:#fff3ee' : ''}">${hrs > 0 ? `<span class="pct-cell ${pctClass(pct)}">${fmtPct(pct)}</span>` : ''}</td>`;
+    });
+    html += '</tr>';
+    proyectos.forEach(([persona, proy]) => {
+      html += `<tr class="row-project"><td class="col-name">${proy}</td>`;
+      weekRange.forEach(w => {
+        const v = demanda[persona][proy][w.key];
+        html += `<td style="${isCurWeek(w) ? 'background:#fffaf8' : ''}">${v ? fmt(v) : ''}</td>`;
+      });
+      html += '</tr>';
+    });
+    return html;
+  };
+
+  personasActivas.forEach(persona => {
+    const proys = sortProjects(Object.keys(demanda[persona] || {})).filter(p => horasEn(persona, p));
+    tbody += filaPersona(persona, '', k => totalPersonaSemana(persona, k), proys.map(p => [persona, p]));
+  });
+
+  // Horas asignadas a quienes ya no están: hay que reasignarlas
+  const inactivas = Object.keys(demanda).filter(p => !personasActivas.includes(p));
+  const filasInact = [];
+  inactivas.sort().forEach(persona => {
+    sortProjects(Object.keys(demanda[persona])).filter(p => horasEn(persona, p))
+      .forEach(p => filasInact.push([persona, p]));
+  });
+  if (filasInact.length) {
+    const sumInact = k => inactivas.reduce((s, p) => s + totalPersonaSemana(p, k), 0);
+    let html = `<tr class="row-person unassigned"><td class="col-name">Por reasignar (personas inactivas)</td>`;
+    weekRange.forEach(w => {
+      const hrs = sumInact(w.key);
+      html += `<td>${hrs > 0 ? fmt(hrs) + ' h' : ''}</td>`;
+    });
+    html += '</tr>';
+    filasInact.forEach(([persona, proy]) => {
+      html += `<tr class="row-project"><td class="col-name">${proy} · ${persona}</td>`;
+      weekRange.forEach(w => {
+        const v = demanda[persona][proy][w.key];
+        html += `<td>${v ? fmt(v) : ''}</td>`;
+      });
+      html += '</tr>';
+    });
+    tbody += html;
+  }
+  tbody += '</tbody>';
+
+  document.getElementById('matrixContainer').innerHTML =
+    `<div class="matrix-wrap"><table class="matrix">${thead}${tbody}</table></div>`;
+  applyStickyHeaderRows('matrixContainer');
+}
+
+function applyStickyHeaderRows(containerId) {
+  const rows = document.querySelectorAll(`#${containerId} thead tr`);
+  let top = 0;
+  rows.forEach(row => {
+    row.querySelectorAll('th').forEach(th => { th.style.top = `${top}px`; });
+    top += row.getBoundingClientRect().height;
+  });
+}
+
+function updateTimestamp() {
+  const tsKey = Object.keys(colIdx).find(k => k.includes('actualizacion') || k.includes('update'));
+  let d = null;
+  if (tsKey) {
+    const dates = sheetRows.map(r => r[tsKey]).filter(Boolean);
+    if (dates.length) {
+      const latest = dates.reduce((a, b) => a > b ? a : b);
+      const p = new Date(latest);
+      if (!isNaN(p) && p.getFullYear() >= 2020) d = p;
+    }
+  }
+  if (!d) d = new Date();
+  document.getElementById('updateNotice').textContent =
+    `Datos al ${d.toLocaleString('es-CL', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+}
+
+HapticaAuth.init({
+  requiredView: 'planeacion',
+  onReady: (session) => {
+    HapticaNav.render('navContainer', { ...session, currentView: 'planeacion' });
+    loadData();
+  }
+});
+</script>
+</body>
+</html>

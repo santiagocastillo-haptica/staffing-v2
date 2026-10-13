@@ -19,9 +19,9 @@ const HapticaAuth = (() => {
     PS:        ['time-report', 'staffing'],
     DirEstCom: ['time-report', 'staffing', 'dimensionamiento'],
     Com:       ['time-report', 'staffing', 'dimensionamiento'],
-    CEO:       ['time-report', 'staffing', 'dimensionamiento'],
-    GerEjec:   ['time-report', 'staffing', 'dimensionamiento', 'manual-edit'],
-    DirOps:    ['time-report', 'staffing', 'dimensionamiento', 'manual-edit'],
+    CEO:       ['time-report', 'staffing', 'dimensionamiento', 'planeacion'],
+    GerEjec:   ['time-report', 'staffing', 'dimensionamiento', 'manual-edit', 'planeacion'],
+    DirOps:    ['time-report', 'staffing', 'dimensionamiento', 'manual-edit', 'planeacion'],
   };
 
   const VIEW_META = {
@@ -30,6 +30,7 @@ const HapticaAuth = (() => {
     'dimensionamiento': { label: 'Dimensionamiento de Venta', href: 'dimensionamiento-venta.html' },
     'manual-edit':      { label: 'Editar Presupuesto',        href: 'presupuesto.html' },
     'reforecast':       { label: 'Solicitud de Tiempos',      href: 'reforecast.html' },
+    'planeacion':       { label: 'Planeación Equipo',         href: 'planeacion-equipo.html' },
   };
 
   // Encabezados que puede usar la pestaña Roles_Config (columna "Rol" + una por vista).
@@ -40,6 +41,8 @@ const HapticaAuth = (() => {
     'staffing del equipo':               'staffing',
     'dimensionamiento de venta':         'dimensionamiento',
     'editar presupuesto':                'manual-edit',
+    'planeación equipo':                 'planeacion',
+    'planeacion equipo':                 'planeacion',
     'solicitud de tiempos (equipos)':    'reforecast',
     'solicitud de tiempos (ops)':        'reforecast',
   };
