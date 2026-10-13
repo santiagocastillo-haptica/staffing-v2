@@ -70,6 +70,25 @@
     .pct-warn { color: #d97706; }
     .pct-over { color: #dc2626; background: #fee2e2 !important; border-radius: 4px; padding: 1px 4px; }
     .hire-cap { color: #0072C1; font-weight: 700; }
+    .scn-section { margin-top: 12px; padding-top: 10px; border-top: 1px solid #f0f4f5; }
+    .scn-section:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
+    .scn-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #5a7a82; margin-bottom: 4px; }
+    .scn-item { font-size: 12px; font-weight: 600; color: #1a2e35; }
+    .scn-meta { font-size: 11px; color: #6b7280; font-weight: 500; }
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: #fff; border-radius: 14px; padding: 26px 30px; width: 560px; max-width: 95vw; max-height: 88vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.15); }
+    .modal h3 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+    .modal-hint { font-size: 12px; color: #6b7280; margin-bottom: 14px; line-height: 1.5; }
+    .pm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin-bottom: 4px; }
+    .pm-hours-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 16px; margin: 6px 0 10px; }
+    .pm-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #003237; margin: 14px 0 6px; padding-top: 10px; border-top: 1px solid #eef2f4; }
+    .modal-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+    .modal-field label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #5a7a82; }
+    .modal-field input, .modal-field select { padding: 8px 11px; border: 1.5px solid #d4dfe2; border-radius: 7px; font-family: inherit; font-size: 13px; font-weight: 500; color: #1a2e35; background: #fff; }
+    .modal-field input:focus, .modal-field select:focus { outline: none; border-color: #003237; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+    .row-person.sim td { background: #eff6ff; color: #1e3a8a; }
     @media (max-width: 900px) { .horizon-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -109,6 +128,9 @@
         </label>
       </div>
       <div class="toolbar-right">
+        <button class="btn-secondary" onclick="resetEscenario()">↺ Reiniciar escenario</button>
+        <button class="btn-secondary" onclick="addSalida()">－ Quitar Haptiqueño</button>
+        <button class="btn-primary" onclick="openProyectoModal()">🚀 Nuevo proyecto</button>
         <button class="btn-primary" onclick="addHire()">＋ Sumar Haptiqueño</button>
       </div>
     </div>
@@ -116,13 +138,35 @@
     <div class="horizon-grid" id="horizonGrid"></div>
 
     <div class="hires-card" id="hiresCard" style="display:none">
-      <h3>Haptiqueños hipotéticos</h3>
-      <div class="hires-sub">Cada uno suma 1 FTE (40 h por semana) desde su semana de ingreso. No se guarda: es solo para simular. La capacidad de cada persona activa sale de la columna <b>Capacidad</b> de Roles_Usuarios.</div>
-      <div id="hiresList"></div>
+      <h3>Escenario simulado</h3>
+      <div class="hires-sub">Nada de esto se guarda: es solo para ver cómo cambian la carga y los FTEs. Cada ingreso suma 1 FTE (40 h por semana); la capacidad de cada persona activa sale de la columna <b>Capacidad</b> de Roles_Usuarios.</div>
+      <div class="scn-section" id="secHires" style="display:none"><div class="scn-title">Ingresos</div><div id="hiresList"></div></div>
+      <div class="scn-section" id="secSalidas" style="display:none"><div class="scn-title">Salidas</div><div id="salidasList"></div></div>
+      <div class="scn-section" id="secProyectos" style="display:none"><div class="scn-title">Proyectos nuevos</div><div id="proyectosList"></div></div>
     </div>
 
     <div id="matrixContainer">
       <div class="state-msg"><div class="spinner"></div>Cargando…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal proyecto nuevo (simulado) -->
+<div class="modal-overlay" id="proyectoModal">
+  <div class="modal">
+    <h3>Nuevo proyecto (simulado)</h3>
+    <div class="modal-hint">Se reparte el total de horas en partes iguales entre las semanas de duración y se suma a la demanda como horas sin asignar a una persona. No se guarda.</div>
+    <div class="pm-grid">
+      <div class="modal-field"><label>Cliente</label><input type="text" id="pCliente" autocomplete="off" /></div>
+      <div class="modal-field"><label>Código</label><input type="text" id="pCodigo" placeholder="Ej: TELMEX-02" autocomplete="off" /></div>
+      <div class="modal-field"><label>Duración (semanas)</label><input type="number" id="pDuracion" min="1" step="1" value="4" /></div>
+      <div class="modal-field"><label>Semana de inicio</label><select id="pSemanaInicio"></select></div>
+    </div>
+    <div class="pm-section-label">Horas vendidas por rol</div>
+    <div class="pm-hours-grid" id="pHorasGrid"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeProyectoModal()">Cancelar</button>
+      <button class="btn-primary" onclick="confirmProyecto()">✓ Agregar al escenario</button>
     </div>
   </div>
 </div>
@@ -145,6 +189,8 @@ let weekRange     = [];   // desde el mes actual hacia adelante
 let proyectoEstado = {};
 let hires         = [];   // [{ id, nombre, startKey }] — solo en memoria
 let hireSeq       = 0;
+let salidas       = [];   // [{ id, persona, startKey }] — personas que se van (simulación)
+let proyectosSim  = [];   // [{ id, codigo, cliente, keys:Set, horasSemana, total, semanas, startKey }]
 let sheetRows     = [];
 let colIdx        = {};
 
@@ -182,7 +228,7 @@ async function loadData() {
     buildWeekRange();
     buildDemanda();
     renderAll();
-    renderHires();
+    renderEscenario();
     updateTimestamp();
   } catch (err) {
     console.error(err);
@@ -242,20 +288,30 @@ function hireMonday(h) {
   return w ? w.monday : Infinity;
 }
 
+function exitMonday(s) {
+  const w = weekRange.find(x => x.key === s.startKey);
+  return w ? w.monday : Infinity;
+}
+
+// Una persona cuenta como activa en una semana si está activa hoy y no se simuló su salida antes.
+function activaEn(persona, monday) {
+  return personasActivas.includes(persona) && !salidas.some(s => s.persona === persona && exitMonday(s) <= monday);
+}
+
 function computeWeekly() {
-  const activas = new Set(personasActivas);
   return weekRange.map(w => {
     let asignada = 0, porReasignar = 0;
     Object.keys(demanda).forEach(persona => {
       let h = 0;
       Object.values(demanda[persona]).forEach(m => { h += m[w.key] || 0; });
-      if (activas.has(persona)) asignada += h; else porReasignar += h;
+      if (activaEn(persona, w.monday)) asignada += h; else porReasignar += h;
     });
+    const simulada = proyectosSim.reduce((s, pr) => s + (pr.keys.has(w.key) ? pr.horasSemana : 0), 0);
     const nuevos = hires.filter(h => hireMonday(h) <= w.monday).length;
-    const headcount = personasActivas.reduce((s, x) => s + capOf(x), 0) + nuevos; // en FTE
+    const headcount = personasActivas.filter(x => activaEn(x, w.monday)).reduce((s, x) => s + capOf(x), 0) + nuevos; // en FTE
     const capacidad = headcount * HORAS_SEMANA;
-    const total = asignada + porReasignar;
-    return { w, asignada, porReasignar, demanda: total, headcount, nuevos, capacidad, carga: capacidad > 0 ? total / capacidad : null };
+    const total = asignada + porReasignar + simulada;
+    return { w, asignada, porReasignar, simulada, demanda: total, headcount, nuevos, capacidad, carga: capacidad > 0 ? total / capacidad : null };
   });
 }
 
@@ -302,13 +358,13 @@ function addHire() {
   const idx = weekRange.findIndex(w => w.semana === cur.semana && w.año === cur.año);
   const start = weekRange[Math.min(Math.max(idx, 0) + 4, weekRange.length - 1)];
   hires.push({ id: ++hireSeq, nombre: `Nuevo Haptiqueño ${hireSeq}`, startKey: start.key });
-  renderHires();
+  renderEscenario();
   renderAll();
 }
 
 function removeHire(id) {
   hires = hires.filter(h => h.id !== id);
-  renderHires();
+  renderEscenario();
   renderAll();
 }
 
@@ -321,21 +377,100 @@ function onHireStart(id, value) {
   if (h) { h.startKey = value; renderAll(); }
 }
 
-function renderHires() {
-  const card = document.getElementById('hiresCard');
-  card.style.display = hires.length ? 'block' : 'none';
-  const opts = h => weekRange.map(w =>
-    `<option value="${w.key}" ${w.key === h.startKey ? 'selected' : ''}>${semanaAnioLabelConFecha(w.semana, w.año)}</option>`).join('');
+function renderEscenario() {
+  const weekOpts = sel => weekRange.map(w =>
+    `<option value="${w.key}" ${w.key === sel ? 'selected' : ''}>${semanaAnioLabelConFecha(w.semana, w.año)}</option>`).join('');
+
+  document.getElementById('secHires').style.display = hires.length ? 'block' : 'none';
   document.getElementById('hiresList').innerHTML = hires.map(h => `
     <div class="hire-row">
       <input type="text" value="${escAttr(h.nombre)}" oninput="onHireName(${h.id}, this.value)" />
       <label>Ingresa en</label>
-      <select onchange="onHireStart(${h.id}, this.value)">${opts(h)}</select>
+      <select onchange="onHireStart(${h.id}, this.value)">${weekOpts(h.startKey)}</select>
       <button class="btn-remove" onclick="removeHire(${h.id})">✕ Quitar</button>
     </div>`).join('');
+
+  document.getElementById('secSalidas').style.display = salidas.length ? 'block' : 'none';
+  document.getElementById('salidasList').innerHTML = salidas.map(s => {
+    const libres = personasActivas.filter(x => x === s.persona || !salidas.some(o => o.persona === x));
+    return `<div class="hire-row">
+      <select onchange="onSalidaPersona(${s.id}, this.value)">${libres.map(x => `<option ${x === s.persona ? 'selected' : ''}>${x}</option>`).join('')}</select>
+      <label>Sale desde</label>
+      <select onchange="onSalidaStart(${s.id}, this.value)">${weekOpts(s.startKey)}</select>
+      <button class="btn-remove" onclick="removeSalida(${s.id})">✕ Deshacer</button>
+    </div>`;
+  }).join('');
+
+  document.getElementById('secProyectos').style.display = proyectosSim.length ? 'block' : 'none';
+  document.getElementById('proyectosList').innerHTML = proyectosSim.map(pr => `
+    <div class="hire-row">
+      <span class="scn-item">${pr.codigo}${pr.cliente ? ' · ' + pr.cliente : ''}</span>
+      <span class="scn-meta">${fmt(pr.total)} h en ${pr.semanas} sem. desde ${pr.startKey.replace('-', ' sem ')}</span>
+      <button class="btn-remove" onclick="removeProyectoSim(${pr.id})">✕ Quitar</button>
+    </div>`).join('');
+
+  document.getElementById('hiresCard').style.display = (hires.length || salidas.length || proyectosSim.length) ? 'block' : 'none';
 }
 
 function onTargetChange() { renderAll(); }
+
+function defaultStartKey() {
+  const cur = getCurrentIsoYearWeek();
+  const idx = weekRange.findIndex(w => w.semana === cur.semana && w.año === cur.año);
+  return weekRange[Math.min(Math.max(idx, 0) + 4, weekRange.length - 1)].key;
+}
+
+function addSalida() {
+  const disponibles = personasActivas.filter(x => !salidas.some(s => s.persona === x));
+  if (!disponibles.length) return;
+  salidas.push({ id: ++hireSeq, persona: disponibles[0], startKey: defaultStartKey() });
+  renderEscenario();
+  renderAll();
+}
+function removeSalida(id) { salidas = salidas.filter(s => s.id !== id); renderEscenario(); renderAll(); }
+function onSalidaPersona(id, v) { const s = salidas.find(x => x.id === id); if (s) { s.persona = v; renderEscenario(); renderAll(); } }
+function onSalidaStart(id, v) { const s = salidas.find(x => x.id === id); if (s) { s.startKey = v; renderAll(); } }
+
+function removeProyectoSim(id) { proyectosSim = proyectosSim.filter(x => x.id !== id); renderEscenario(); renderAll(); }
+
+function resetEscenario() {
+  hires = []; salidas = []; proyectosSim = [];
+  renderEscenario();
+  renderAll();
+}
+
+// ── Proyecto nuevo (simulado)
+function openProyectoModal() {
+  document.getElementById('pSemanaInicio').innerHTML = weekRange.map(w =>
+    `<option value="${w.key}">${semanaAnioLabelConFecha(w.semana, w.año)}</option>`).join('');
+  document.getElementById('pSemanaInicio').value = defaultStartKey();
+  document.getElementById('pHorasGrid').innerHTML = STAFFING_ROLES.map((r, i) =>
+    `<div class="modal-field"><label>${r}</label><input type="number" id="pHoras${i}" min="0" step="1" value="0" /></div>`).join('');
+  ['pCliente', 'pCodigo'].forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('pDuracion').value = 4;
+  document.getElementById('proyectoModal').classList.add('open');
+}
+function closeProyectoModal() { document.getElementById('proyectoModal').classList.remove('open'); }
+
+function confirmProyecto() {
+  const codigo = document.getElementById('pCodigo').value.trim();
+  const cliente = document.getElementById('pCliente').value.trim();
+  if (!codigo) { alert('Ingresa el código del proyecto.'); return; }
+  const duracion = Math.max(1, Math.round(Number(document.getElementById('pDuracion').value) || 1));
+  const total = STAFFING_ROLES.reduce((s, _, i) => s + (Number(document.getElementById('pHoras' + i).value) || 0), 0);
+  if (total <= 0) { alert('Ingresa horas en al menos un rol.'); return; }
+  const startKey = document.getElementById('pSemanaInicio').value;
+  const full = getFullWeekRange();
+  const idx = full.findIndex(w => w.key === startKey);
+  const keys = new Set(full.slice(idx, idx + duracion).map(w => w.key));
+  proyectosSim.push({
+    id: ++hireSeq, codigo, cliente, keys, semanas: duracion, total, startKey,
+    horasSemana: total / keys.size,
+  });
+  closeProyectoModal();
+  renderEscenario();
+  renderAll();
+}
 
 // ── Render ──────────────────────────────────────────────────────────────────
 function renderAll() {
@@ -391,7 +526,11 @@ function renderMatrix(weekly) {
 
   let tbody = '<tbody>';
   const filaPersona = (nombre, cls, calcHoras, proyectos, cap = 1) => {
-    const etiqueta = cap < 1 ? `${nombre} <span style="font-weight:500;color:#5a7a82">· ${Math.round(cap * 100)}%</span>` : nombre;
+    const salida = salidas.find(s => s.persona === nombre);
+    const partes = [];
+    if (cap < 1) partes.push(`${Math.round(cap * 100)}%`);
+    if (salida) partes.push(`sale ${salida.startKey.replace('-', ' sem ')}`);
+    const etiqueta = partes.length ? `${nombre} <span style="font-weight:500;color:#5a7a82">· ${partes.join(' · ')}</span>` : nombre;
     let html = `<tr class="row-person ${cls}"><td class="col-name">${etiqueta}</td>`;
     weekRange.forEach(w => {
       const hrs = calcHoras(w.key);
@@ -436,6 +575,20 @@ function renderMatrix(weekly) {
         const v = demanda[persona][proy][w.key];
         html += `<td>${v ? fmt(v) : ''}</td>`;
       });
+      html += '</tr>';
+    });
+    tbody += html;
+  }
+  if (proyectosSim.length) {
+    let html = `<tr class="row-person sim"><td class="col-name">Proyectos nuevos (sin asignar)</td>`;
+    weekRange.forEach(w => {
+      const hrs = proyectosSim.reduce((s, pr) => s + (pr.keys.has(w.key) ? pr.horasSemana : 0), 0);
+      html += `<td>${hrs > 0 ? fmt(hrs) + ' h' : ''}</td>`;
+    });
+    html += '</tr>';
+    proyectosSim.forEach(pr => {
+      html += `<tr class="row-project"><td class="col-name">${pr.codigo}${pr.cliente ? ' · ' + pr.cliente : ''}</td>`;
+      weekRange.forEach(w => { html += `<td>${pr.keys.has(w.key) ? fmt(pr.horasSemana) : ''}</td>`; });
       html += '</tr>';
     });
     tbody += html;
