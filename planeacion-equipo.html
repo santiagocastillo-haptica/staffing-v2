@@ -89,6 +89,16 @@
     .modal-field input:focus, .modal-field select:focus { outline: none; border-color: #003237; }
     .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
     .row-person.sim td { background: #eff6ff; color: #1e3a8a; }
+    .hrs-input { width: 44px; padding: 4px 2px; border: 1.5px solid transparent; border-radius: 5px; font-family: inherit; font-size: 12px; font-weight: 600; color: #1a2e35; text-align: center; background: transparent; transition: all 0.12s; }
+    .hrs-input:hover { border-color: #d4dfe2; background: #fff; }
+    .hrs-input:focus { outline: none; border-color: #003237; background: #fff; }
+    .hrs-input.changed { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
+    .hrs-input::-webkit-inner-spin-button, .hrs-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    .hrs-input[type=number] { -moz-appearance: textfield; }
+    .row-add td { background: #fff; padding: 4px; border-bottom: 2px solid #eef2f4; }
+    .row-add td.col-name { border-right: 2px solid #003237; }
+    .btn-add-row { background: none; border: none; cursor: pointer; color: #9ca3af; font-size: 11px; font-weight: 500; padding: 4px 12px; font-family: inherit; }
+    .btn-add-row:hover { color: #003237; }
     @media (max-width: 900px) { .horizon-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -139,7 +149,7 @@
 
     <div class="hires-card" id="hiresCard" style="display:none">
       <h3>Escenario simulado</h3>
-      <div class="hires-sub">Nada de esto se guarda: es solo para ver cómo cambian la carga y los FTEs. Cada ingreso suma 1 FTE (40 h por semana); la capacidad de cada persona activa sale de la columna <b>Capacidad</b> de Roles_Usuarios.</div>
+      <div class="hires-sub">Nada de esto se guarda: es solo para ver cómo cambian la carga y los FTEs. Puedes editar las horas de cualquier celda de la matriz (en naranja las que cambiaste) y agregar proyectos a una persona con ＋ agregar proyecto. Cada ingreso suma 1 FTE (40 h por semana); la capacidad de cada persona activa sale de la columna <b>Capacidad</b> de Roles_Usuarios.</div>
       <div class="scn-section" id="secHires" style="display:none"><div class="scn-title">Ingresos</div><div id="hiresList"></div></div>
       <div class="scn-section" id="secSalidas" style="display:none"><div class="scn-title">Salidas</div><div id="salidasList"></div></div>
       <div class="scn-section" id="secProyectos" style="display:none"><div class="scn-title">Proyectos nuevos</div><div id="proyectosList"></div></div>
@@ -171,6 +181,23 @@
   </div>
 </div>
 
+<!-- Modal agregar proyecto a una persona (simulado) -->
+<div class="modal-overlay" id="addProyModal">
+  <div class="modal" style="width:380px">
+    <h3>Agregar proyecto a <span id="addProyPersona"></span></h3>
+    <div class="modal-hint">Elige un proyecto existente o escribe uno nuevo; luego digita las horas por semana en su fila. No se guarda.</div>
+    <div class="modal-field">
+      <label>Proyecto</label>
+      <input type="text" id="addProyInput" list="addProyOptions" placeholder="Escribe para buscar…" autocomplete="off" />
+      <datalist id="addProyOptions"></datalist>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeAddProyModal()">Cancelar</button>
+      <button class="btn-primary" onclick="confirmAddProy()">Agregar</button>
+    </div>
+  </div>
+</div>
+
 <script src="shared/staffing-utils.js"></script>
 <script src="shared/auth.js"></script>
 <script src="shared/nav.js"></script>
@@ -191,6 +218,16 @@ let hires         = [];   // [{ id, nombre, startKey }] — solo en memoria
 let hireSeq       = 0;
 let salidas       = [];   // [{ id, persona, startKey }] — personas que se van (simulación)
 let proyectosSim  = [];   // [{ id, codigo, cliente, keys:Set, horasSemana, total, semanas, startKey }]
+let ajustes       = {};   // ajustes[personaKey][proyecto][semanaAnioKey] = horas (sobrescribe lo presupuestado) — solo en memoria
+let filasExtra    = {};   // personaKey -> Set(proyecto) filas agregadas a mano
+let demEf         = {};   // demanda efectiva = presupuestado + ajustes
+let modalPersona  = null;
+const hireKey = h => '#h' + h.id;
+const esHireKey = k => k.startsWith('#h');
+function nombreDe(k) {
+  if (esHireKey(k)) { const h = hires.find(x => hireKey(x) === k); return h ? h.nombre : k; }
+  return k;
+}
 let sheetRows     = [];
 let colIdx        = {};
 
@@ -301,10 +338,10 @@ function activaEn(persona, monday) {
 function computeWeekly() {
   return weekRange.map(w => {
     let asignada = 0, porReasignar = 0;
-    Object.keys(demanda).forEach(persona => {
+    Object.keys(demEf).forEach(persona => {
       let h = 0;
-      Object.values(demanda[persona]).forEach(m => { h += m[w.key] || 0; });
-      if (activaEn(persona, w.monday)) asignada += h; else porReasignar += h;
+      Object.values(demEf[persona]).forEach(m => { h += m[w.key] || 0; });
+      if (esHireKey(persona) || activaEn(persona, w.monday)) asignada += h; else porReasignar += h;
     });
     const simulada = proyectosSim.reduce((s, pr) => s + (pr.keys.has(w.key) ? pr.horasSemana : 0), 0);
     const nuevos = hires.filter(h => hireMonday(h) <= w.monday).length;
@@ -363,6 +400,8 @@ function addHire() {
 }
 
 function removeHire(id) {
+  const h0 = hires.find(h => h.id === id);
+  if (h0) { delete ajustes[hireKey(h0)]; delete filasExtra[hireKey(h0)]; }
   hires = hires.filter(h => h.id !== id);
   renderEscenario();
   renderAll();
@@ -412,6 +451,65 @@ function renderEscenario() {
   document.getElementById('hiresCard').style.display = (hires.length || salidas.length || proyectosSim.length) ? 'block' : 'none';
 }
 
+function buildDemEf() {
+  const out = {};
+  Object.keys(demanda).forEach(p => {
+    out[p] = {};
+    Object.keys(demanda[p]).forEach(pr => { out[p][pr] = { ...demanda[p][pr] }; });
+  });
+  Object.keys(ajustes).forEach(p => {
+    out[p] = out[p] || {};
+    Object.keys(ajustes[p]).forEach(pr => {
+      out[p][pr] = out[p][pr] || {};
+      Object.keys(ajustes[p][pr]).forEach(k => {
+        const v = ajustes[p][pr][k];
+        if (v > 0) out[p][pr][k] = v; else delete out[p][pr][k];
+      });
+    });
+  });
+  return out;
+}
+
+function onCellEdit(input) {
+  const p = input.dataset.p, pr = input.dataset.pr, k = input.dataset.k;
+  const n = Math.max(0, Math.round(Number(input.value) || 0));
+  const base = (demanda[p] && demanda[p][pr] && demanda[p][pr][k]) || 0;
+  if (!ajustes[p]) ajustes[p] = {};
+  if (!ajustes[p][pr]) ajustes[p][pr] = {};
+  if (n === base) delete ajustes[p][pr][k]; else ajustes[p][pr][k] = n;
+  if (!Object.keys(ajustes[p][pr]).length) delete ajustes[p][pr];
+  if (!Object.keys(ajustes[p]).length) delete ajustes[p];
+  renderAllKeepScroll();
+}
+
+function renderAllKeepScroll() {
+  const wrap = document.querySelector('#matrixContainer .matrix-wrap');
+  const left = wrap ? wrap.scrollLeft : 0, top = wrap ? wrap.scrollTop : 0;
+  renderAll();
+  const nw = document.querySelector('#matrixContainer .matrix-wrap');
+  if (nw) { nw.scrollLeft = left; nw.scrollTop = top; }
+}
+
+// ── Agregar un proyecto existente (o nuevo nombre) a una persona
+function openAddProyModal(personaKey) {
+  modalPersona = personaKey;
+  document.getElementById('addProyPersona').textContent = nombreDe(personaKey);
+  const nombres = new Set();
+  Object.values(demanda).forEach(m => Object.keys(m).forEach(pr => nombres.add(pr)));
+  document.getElementById('addProyOptions').innerHTML = [...nombres].sort().map(n => `<option value="${escAttr(n)}"></option>`).join('');
+  document.getElementById('addProyInput').value = '';
+  document.getElementById('addProyModal').classList.add('open');
+}
+function closeAddProyModal() { document.getElementById('addProyModal').classList.remove('open'); }
+function confirmAddProy() {
+  const pr = document.getElementById('addProyInput').value.trim();
+  if (!pr) { alert('Elige o escribe un proyecto.'); return; }
+  if (!filasExtra[modalPersona]) filasExtra[modalPersona] = new Set();
+  filasExtra[modalPersona].add(pr);
+  closeAddProyModal();
+  renderAllKeepScroll();
+}
+
 function onTargetChange() { renderAll(); }
 
 function defaultStartKey() {
@@ -434,7 +532,7 @@ function onSalidaStart(id, v) { const s = salidas.find(x => x.id === id); if (s)
 function removeProyectoSim(id) { proyectosSim = proyectosSim.filter(x => x.id !== id); renderEscenario(); renderAll(); }
 
 function resetEscenario() {
-  hires = []; salidas = []; proyectosSim = [];
+  hires = []; salidas = []; proyectosSim = []; ajustes = {}; filasExtra = {};
   renderEscenario();
   renderAll();
 }
@@ -474,6 +572,7 @@ function confirmProyecto() {
 
 // ── Render ──────────────────────────────────────────────────────────────────
 function renderAll() {
+  demEf = buildDemEf();
   const weekly = computeWeekly();
   renderHorizontes(weekly);
   renderMatrix(weekly);
@@ -505,7 +604,6 @@ function renderMatrix(weekly) {
     thead += `<th style="${isCurWeek(w) ? 'background:#FA4616;color:#fff' : ''}">${w.semana}<br><span style="font-size:9px;font-weight:600;opacity:.7">${w.año}</span></th>`;
   });
   thead += '</tr>';
-
   thead += '<tr class="row-team"><th class="col-name">Demanda (h)</th>';
   weekly.forEach(x => { thead += `<th>${x.demanda ? fmt(x.demanda) : ''}</th>`; });
   thead += '</tr>';
@@ -520,48 +618,58 @@ function renderMatrix(weekly) {
   thead += '</thead>';
 
   const keys = weekRange.map(w => w.key);
-  const horasEn = (persona, proy) => keys.some(k => (demanda[persona] && demanda[persona][proy] && demanda[persona][proy][k]) > 0);
+  const horaDe = (persona, proy, k) => (demEf[persona] && demEf[persona][proy] && demEf[persona][proy][k]) || 0;
+  const horasEn = (persona, proy) => keys.some(k => horaDe(persona, proy, k) > 0);
   const totalPersonaSemana = (persona, k) =>
-    Object.values(demanda[persona] || {}).reduce((s, m) => s + (m[k] || 0), 0);
+    Object.values(demEf[persona] || {}).reduce((s, m) => s + (m[k] || 0), 0);
 
-  let tbody = '<tbody>';
-  const filaPersona = (nombre, cls, calcHoras, proyectos, cap = 1) => {
-    const salida = salidas.find(s => s.persona === nombre);
+  const celdaInput = (persona, proy, w) => {
+    const v = horaDe(persona, proy, w.key);
+    const cambiado = ajustes[persona] && ajustes[persona][proy] && ajustes[persona][proy][w.key] !== undefined;
+    return `<td style="${isCurWeek(w) ? 'background:#fffaf8' : ''}"><input class="hrs-input${cambiado ? ' changed' : ''}" type="number" min="0" step="1" inputmode="numeric" value="${v || ''}" data-p="${escAttr(persona)}" data-pr="${escAttr(proy)}" data-k="${w.key}" oninput="this.value = this.value.replace(/[^0-9]/g,'')" onchange="onCellEdit(this)" /></td>`;
+  };
+
+  const proyectosDe = persona => {
+    const set = new Set(Object.keys(demEf[persona] || {}).filter(p => horasEn(persona, p)));
+    (filasExtra[persona] || new Set()).forEach(p => set.add(p));
+    return sortProjects([...set]);
+  };
+
+  const filaPersona = (persona, cls, cap, conAgregar) => {
+    const nombre = nombreDe(persona);
+    const salida = salidas.find(s => s.persona === persona);
+    const hire = esHireKey(persona) ? hires.find(h => hireKey(h) === persona) : null;
     const partes = [];
+    if (hire) partes.push(`ingresa ${hire.startKey.replace('-', ' sem ')}`);
     if (cap < 1) partes.push(`${Math.round(cap * 100)}%`);
     if (salida) partes.push(`sale ${salida.startKey.replace('-', ' sem ')}`);
     const etiqueta = partes.length ? `${nombre} <span style="font-weight:500;color:#5a7a82">· ${partes.join(' · ')}</span>` : nombre;
     let html = `<tr class="row-person ${cls}"><td class="col-name">${etiqueta}</td>`;
     weekRange.forEach(w => {
-      const hrs = calcHoras(w.key);
+      const hrs = totalPersonaSemana(persona, w.key);
       const pct = hrs / (HORAS_SEMANA * cap);
       html += `<td style="${isCurWeek(w) ? 'background:#fff3ee' : ''}">${hrs > 0 ? `<span class="pct-cell ${pctClass(pct)}">${fmtPct(pct)}</span>` : ''}</td>`;
     });
     html += '</tr>';
-    proyectos.forEach(([persona, proy]) => {
+    proyectosDe(persona).forEach(proy => {
       html += `<tr class="row-project"><td class="col-name">${proy}</td>`;
-      weekRange.forEach(w => {
-        const v = demanda[persona][proy][w.key];
-        html += `<td style="${isCurWeek(w) ? 'background:#fffaf8' : ''}">${v ? fmt(v) : ''}</td>`;
-      });
+      weekRange.forEach(w => { html += celdaInput(persona, proy, w); });
       html += '</tr>';
     });
+    if (conAgregar) {
+      html += `<tr class="row-add"><td class="col-name"><button class="btn-add-row" data-p="${escAttr(persona)}" onclick="openAddProyModal(this.dataset.p)">＋ agregar proyecto</button></td>${weekRange.map(() => '<td></td>').join('')}</tr>`;
+    }
     return html;
   };
 
-  personasActivas.forEach(persona => {
-    const proys = sortProjects(Object.keys(demanda[persona] || {})).filter(p => horasEn(persona, p));
-    tbody += filaPersona(persona, '', k => totalPersonaSemana(persona, k), proys.map(p => [persona, p]), capOf(persona));
-  });
+  let tbody = '<tbody>';
+  personasActivas.forEach(persona => { tbody += filaPersona(persona, '', capOf(persona), true); });
+  hires.forEach(h => { tbody += filaPersona(hireKey(h), 'sim', 1, true); });
 
   // Horas asignadas a quienes ya no están: hay que reasignarlas
-  const inactivas = Object.keys(demanda).filter(p => !personasActivas.includes(p));
-  const filasInact = [];
-  inactivas.sort().forEach(persona => {
-    sortProjects(Object.keys(demanda[persona])).filter(p => horasEn(persona, p))
-      .forEach(p => filasInact.push([persona, p]));
-  });
-  if (filasInact.length) {
+  const inactivas = Object.keys(demEf).filter(p => !esHireKey(p) && !personasActivas.includes(p));
+  const hayInact = inactivas.some(p => proyectosDe(p).length);
+  if (hayInact) {
     const sumInact = k => inactivas.reduce((s, p) => s + totalPersonaSemana(p, k), 0);
     let html = `<tr class="row-person unassigned"><td class="col-name">Por reasignar (personas inactivas)</td>`;
     weekRange.forEach(w => {
@@ -569,16 +677,16 @@ function renderMatrix(weekly) {
       html += `<td>${hrs > 0 ? fmt(hrs) + ' h' : ''}</td>`;
     });
     html += '</tr>';
-    filasInact.forEach(([persona, proy]) => {
-      html += `<tr class="row-project"><td class="col-name">${proy} · ${persona}</td>`;
-      weekRange.forEach(w => {
-        const v = demanda[persona][proy][w.key];
-        html += `<td>${v ? fmt(v) : ''}</td>`;
+    inactivas.sort().forEach(persona => {
+      proyectosDe(persona).forEach(proy => {
+        html += `<tr class="row-project"><td class="col-name">${proy} · ${persona}</td>`;
+        weekRange.forEach(w => { html += celdaInput(persona, proy, w); });
+        html += '</tr>';
       });
-      html += '</tr>';
     });
     tbody += html;
   }
+
   if (proyectosSim.length) {
     let html = `<tr class="row-person sim"><td class="col-name">Proyectos nuevos (sin asignar)</td>`;
     weekRange.forEach(w => {
