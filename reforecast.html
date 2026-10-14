@@ -134,6 +134,12 @@
         <h2>Modificación solicitada</h2>
         <div class="section-sub" id="modSub">Propón horas nuevas por persona y semana para este proyecto.</div>
         <div id="turnBanner"></div>
+        <div id="extraWeekBar" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 12px;font-size:12px">
+          <label style="font-weight:600;color:#5a7a82;text-transform:uppercase;letter-spacing:.4px;font-size:11px">Semana extra</label>
+          <select id="extraWeekSel" style="padding:6px 10px;border:1.5px solid #d4dfe2;border-radius:7px;font-family:inherit;font-size:12px;font-weight:600;color:#1a2e35;background:#fff"></select>
+          <button class="btn-secondary" onclick="agregarSemanaExtra()">＋ Agregar semana extra</button>
+          <span id="extraWeekChips" style="display:flex;gap:6px;flex-wrap:wrap"></span>
+        </div>
         <div style="overflow-x:auto">
           <table class="rf-table" id="modTable"></table>
         </div>
@@ -345,6 +351,9 @@ function parseWeekKeyLocal(key) {
 const REFORECAST_WEEKS_BACK    = 2;
 const REFORECAST_WEEKS_FORWARD = 8;
 
+// Semanas fuera de la ventana que el usuario agregó a mano ("agregar semana extra")
+let semanasExtra = new Set();
+
 function weeksForDisplay(equipoMatrix, threadHoras) {
   const cur = getCurrentIsoYearWeek();
   const full = getFullWeekRange();
@@ -353,6 +362,7 @@ function weeksForDisplay(equipoMatrix, threadHoras) {
 
   const keys = new Set(ventana.map(w => w.key));
   Object.keys(threadHoras || {}).forEach(k => keys.add(k.split('|')[1]));
+  semanasExtra.forEach(k => keys.add(k));
   return [...keys].map(parseWeekKeyLocal).sort((a, b) => a.monday - b.monday);
 }
 
@@ -431,6 +441,7 @@ function onProyectoChange() {
   selectedProyecto = document.getElementById('selProyecto').value;
   if (!selectedProyecto) { document.getElementById('proyectoDetail').style.display = 'none'; return; }
   document.getElementById('proyectoDetail').style.display = 'block';
+  semanasExtra = new Set();
   renderEquipoYVenta();
   renderModificacion();
 }
@@ -476,6 +487,8 @@ function renderModificacion() {
   const thread = activeThreadFor(selectedProyecto);
   const threadHoras = thread ? JSON.parse(thread.horasJSON || '{}') : {};
   const weeks = weeksForDisplay(equipoMatrix, threadHoras);
+
+  renderExtraWeekBar(weeks, personas.length > 0);
 
   const banner = document.getElementById('turnBanner');
   const actions = document.getElementById('modActions');
@@ -529,6 +542,49 @@ function renderModificacion() {
   } else {
     actions.innerHTML = `<button class="btn-primary" onclick="enviarSolicitudNueva()">Enviar solicitud</button>`;
   }
+}
+
+// ── Semana extra ────────────────────────────────────────────────────────────
+function renderExtraWeekBar(weeks, visible) {
+  const bar = document.getElementById('extraWeekBar');
+  bar.style.display = visible ? 'flex' : 'none';
+  if (!visible) return;
+  const mostradas = new Set(weeks.map(w => w.key));
+  const ultima = weeks.length ? weeks[weeks.length - 1].monday : 0;
+  const full = getFullWeekRange();
+  const opciones = full.filter(w => !mostradas.has(w.key));
+  const sel = document.getElementById('extraWeekSel');
+  const siguiente = opciones.find(w => w.monday > ultima) || opciones[0];
+  sel.innerHTML = opciones.map(w => `<option value="${w.key}">${semanaAnioLabelConFecha(w.semana, w.año)}</option>`).join('');
+  if (siguiente) sel.value = siguiente.key;
+  document.getElementById('extraWeekChips').innerHTML = [...semanasExtra].map(parseWeekKeyLocal)
+    .sort((a, b) => a.monday - b.monday)
+    .map(w => `<span style="background:#eef2f4;border-radius:99px;padding:3px 6px 3px 10px;font-weight:600;color:#1a2e35">Sem ${w.semana} · ${w.año}
+        <button onclick="quitarSemanaExtra('${w.key}')" title="Quitar esta semana" style="border:none;background:none;cursor:pointer;color:#991b1b;font-weight:800">✕</button></span>`).join('');
+}
+
+// Re-render conservando lo que el usuario ya escribió en las cajas
+function rerenderConservandoInputs() {
+  const previos = {};
+  document.querySelectorAll('#modTable .rf-input').forEach(inp => { previos[`${inp.dataset.persona}|${inp.dataset.week}`] = inp.value; });
+  renderEquipoYVenta();
+  renderModificacion();
+  document.querySelectorAll('#modTable .rf-input').forEach(inp => {
+    const k = `${inp.dataset.persona}|${inp.dataset.week}`;
+    if (k in previos) inp.value = previos[k];
+  });
+}
+
+function agregarSemanaExtra() {
+  const k = document.getElementById('extraWeekSel').value;
+  if (!k) return;
+  semanasExtra.add(k);
+  rerenderConservandoInputs();
+}
+
+function quitarSemanaExtra(k) {
+  semanasExtra.delete(k);
+  rerenderConservandoInputs();
 }
 
 function collectInputValues() {
