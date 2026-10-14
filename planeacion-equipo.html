@@ -207,7 +207,7 @@
 
     <div class="role-card" id="roleCard" style="display:none">
       <h3>Detalle por rol</h3>
-      <div class="hires-sub">Cada persona cuenta en su <b>rol principal</b> (Rol Háptica 1 de Roles_Usuarios). Las vacantes, los ingresos y los proyectos nuevos usan el rol que les indiques. Un FTE sobrante en un rol no cubre la falta en otro.</div>
+      <div class="hires-sub">Cada persona cuenta en su <b>rol principal</b> (Rol Háptica 1 de Roles_Usuarios). Las vacantes, los ingresos y los proyectos nuevos usan el rol que les indiques. Un FTE sobrante en un rol no cubre la falta en otro. <b>Residual</b>: horas libres de una persona (frente a la ocupación objetivo) que no alcanzan el mínimo semanal por proyecto de su rol (Host 1 h; Owner y Doers 4 h) y por eso no se pueden asignar; la <b>Brecha</b> ya las descuenta.</div>
       <div id="roleTable"></div>
     </div>
 
@@ -463,6 +463,12 @@ async function fetchRolesPrincipales() {
   } catch (e) { return {}; }
 }
 
+// Horas semanales mínimas con las que una persona puede atender un proyecto, por rol.
+// Las horas libres por debajo de ese mínimo son "residuales": existen pero no se pueden asignar.
+const MIN_BLOQUE = { 'Host': 1, 'Owner': 4, 'Doer Estrategia': 4, 'Doer Legal': 4, 'Doer Visual': 4 };
+const MIN_BLOQUE_DEFAULT = 4;
+const minBloque = rol => (rol in MIN_BLOQUE ? MIN_BLOQUE[rol] : MIN_BLOQUE_DEFAULT);
+
 const SIN_ROL = 'Sin rol definido';
 function rolDe(key) {
   if (esVacKey(key)) { const v = vacantes.find(x => vacKey(x) === key); return v ? v.rol : SIN_ROL; }
@@ -503,7 +509,7 @@ function computeWeekly() {
     const headcount = activasEn.reduce((s, x) => s + capOf(x), 0) + nuevos; // en FTE
     const capacidad = headcount * HORAS_SEMANA;
     const porRol = {};
-    const add = (r, d, c) => { const o = porRol[r] || (porRol[r] = { demanda: 0, capacidad: 0 }); o.demanda += d; o.capacidad += c; };
+    const add = (r, d, c) => { const o = porRol[r] || (porRol[r] = { demanda: 0, capacidad: 0, residual: 0 }); o.demanda += d; o.capacidad += c; };
     Object.keys(demEf).forEach(persona => {
       let h = 0;
       Object.values(demEf[persona]).forEach(m => { h += m[w.key] || 0; });
@@ -515,8 +521,27 @@ function computeWeekly() {
     });
     personasActivas.filter(x => activaEn(x, w.monday)).forEach(x => add(rolDe(x), 0, capOf(x) * HORAS_SEMANA));
     hires.filter(h => hireMonday(h) <= w.monday).forEach(h => add(rolDe(hireKey(h)), 0, HORAS_SEMANA));
+
+    // Horas residuales: lo que le queda a cada persona frente a su capacidad objetivo
+    // (40 h × ocupación objetivo) pero por debajo del mínimo que su rol necesita para un proyecto.
+    const objetivo = targetFraction();
+    const resPersona = {};
+    let residual = 0;
+    const evaluar = (clave, capFrac) => {
+      const rol = rolDe(clave);
+      const carga = Object.values(demEf[clave] || {}).reduce((s, m) => s + (m[w.key] || 0), 0);
+      const libre = Math.max(0, capFrac * HORAS_SEMANA * objetivo - carga);
+      if (libre > 0 && libre < minBloque(rol)) {
+        resPersona[clave] = libre;
+        residual += libre;
+        add(rol, 0, 0);
+        porRol[rol].residual += libre;
+      }
+    };
+    personasActivas.filter(x => activaEn(x, w.monday)).forEach(x => evaluar(x, capOf(x)));
+    hires.filter(h => hireMonday(h) <= w.monday).forEach(h => evaluar(hireKey(h), 1));
     const total = asignada + porReasignar + simulada + vacantesH;
-    return { w, porRol, asignada, porReasignar, simulada, vacantes: vacantesH, demanda: total, headcount, nPersonas, nuevos, capacidad, carga: capacidad > 0 ? total / capacidad : null };
+    return { w, porRol, resPersona, residual, asignada, porReasignar, simulada, vacantes: vacantesH, demanda: total, headcount, nPersonas, nuevos, capacidad, carga: capacidad > 0 ? total / capacidad : null };
   });
 }
 
@@ -546,7 +571,12 @@ function renderHorizontes(weekly) {
       : '';
 
     const fte = demProm / (HORAS_SEMANA * objetivo);
-    const brecha = fte - headProm;
+    const residProm = ventana.reduce((a, x) => a + x.residual, 0) / n;
+    const residFte = residProm / (HORAS_SEMANA * objetivo);
+    const filaRes = residProm > 0.05
+      ? `<div class="hz-row">Horas residuales <b>${fmt(residProm)} h/sem <span style="font-size:12px;font-weight:600;color:#5a7a82">≈ ${residFte.toFixed(1)} FTE</span></b></div>`
+      : '';
+    const brecha = fte - (headProm - residFte);
     let veredicto;
     if (brecha > 0.5)       veredicto = `<div class="hz-verdict hz-short">Faltan ~${brecha.toFixed(1)} FTE</div>`;
     else if (brecha < -0.5) veredicto = `<div class="hz-verdict hz-over">Sobran ~${(-brecha).toFixed(1)} FTE</div>`;
@@ -558,6 +588,7 @@ function renderHorizontes(weekly) {
       <div class="hz-row">FTEs requeridos <b>${fte.toFixed(1)}</b></div>
       <div class="hz-row">Equipo promedio (FTE) <b>${headProm.toFixed(1)}</b></div>
       ${filaVac}
+      ${filaRes}
       ${veredicto}
     </div>`;
   }).join('');
@@ -1076,15 +1107,17 @@ function renderPorRol(weekly) {
     const demProm = dem / k;
     const fteEq = cap / k / HORAS_SEMANA;
     const fteReq = demProm / (HORAS_SEMANA * objetivo);
-    return { carga: cap > 0 ? dem / cap : null, demProm, fteEq, fteReq, brecha: fteReq - fteEq };
+    const res = ventana.reduce((a, x) => a + ((x.porRol[rol] && x.porRol[rol].residual) || 0), 0) / k;
+    const fteRes = res / (HORAS_SEMANA * objetivo);
+    return { carga: cap > 0 ? dem / cap : null, demProm, fteEq, fteReq, fteRes, brecha: fteReq - (fteEq - fteRes) };
   };
   const celdaBrecha = b => b > 0.5 ? `<span class="gap-short">Faltan ${b.toFixed(1)}</span>`
     : b < -0.5 ? `<span class="gap-over">Sobran ${(-b).toFixed(1)}</span>` : `<span class="gap-ok">OK</span>`;
 
   let html = '<table class="role-table"><thead><tr><th rowspan="2">Rol</th>';
-  HORIZONTES.forEach(hz => { html += `<th class="grp sep" colspan="4">${hz.label}</th>`; });
+  HORIZONTES.forEach(hz => { html += `<th class="grp sep" colspan="5">${hz.label}</th>`; });
   html += '</tr><tr>';
-  HORIZONTES.forEach(() => { html += '<th class="sep">Carga</th><th>FTE req.</th><th>Equipo</th><th>Brecha</th>'; });
+  HORIZONTES.forEach(() => { html += '<th class="sep">Carga</th><th>FTE req.</th><th>Equipo</th><th title="Horas libres que no alcanzan el mínimo por proyecto del rol">Residual</th><th>Brecha</th>'; });
   html += '</tr></thead><tbody>';
   roles.forEach(rol => {
     html += `<tr><td>${rol}</td>`;
@@ -1093,7 +1126,7 @@ function renderPorRol(weekly) {
       const cargaHtml = c.carga === null
         ? (c.demProm > 0 ? '<span class="pct-cell pct-over">sin equipo</span>' : '—')
         : `<span class="pct-cell ${pctClass(c.carga)}">${fmtPct(c.carga)}</span>`;
-      html += `<td class="sep">${cargaHtml}</td><td>${c.fteReq.toFixed(1)}</td><td>${c.fteEq.toFixed(1)}</td><td>${celdaBrecha(c.brecha)}</td>`;
+      html += `<td class="sep">${cargaHtml}</td><td>${c.fteReq.toFixed(1)}</td><td>${c.fteEq.toFixed(1)}</td><td style="color:#9a3412">${c.fteRes > 0.04 ? c.fteRes.toFixed(1) : '—'}</td><td>${celdaBrecha(c.brecha)}</td>`;
     });
     html += '</tr>';
   });
@@ -1161,6 +1194,7 @@ function renderMatrix(weekly) {
     return sortProjects([...set]);
   };
 
+  const weeklyPorKey = Object.fromEntries(weekly.map(x => [x.w.key, x]));
   const filaPersona = (persona, cls, cap, conAgregar) => {
     const nombre = nombreDe(persona);
     const salida = salidas.find(s => s.persona === persona);
@@ -1174,7 +1208,9 @@ function renderMatrix(weekly) {
     weekRange.forEach(w => {
       const hrs = totalPersonaSemana(persona, w.key);
       const pct = hrs / (HORAS_SEMANA * cap);
-      html += `<td style="${isCurWeek(w) ? 'background:#fff3ee' : ''}">${hrs > 0 ? `<span class="pct-cell ${pctClass(pct)}">${fmtPct(pct)}</span>` : ''}</td>`;
+      const resH = (weeklyPorKey[w.key] && weeklyPorKey[w.key].resPersona[persona]) || 0;
+      const marca = resH > 0 ? ` title="${resH.toFixed(1)} h libres, por debajo del mínimo de ${minBloque(rolDe(persona))} h por proyecto: residuales" style="border-bottom:3px solid #f59e0b;${isCurWeek(w) ? 'background:#fff3ee' : ''}"` : ` style="${isCurWeek(w) ? 'background:#fff3ee' : ''}"`;
+      html += `<td${marca}>${hrs > 0 ? `<span class="pct-cell ${pctClass(pct)}">${fmtPct(pct)}</span>` : (resH > 0 ? `<span style="font-size:10px;color:#b45309">${fmt(resH)}h</span>` : '')}</td>`;
     });
     html += '</tr>';
     proyectosDe(persona).forEach(proy => {
