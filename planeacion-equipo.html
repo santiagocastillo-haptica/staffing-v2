@@ -106,6 +106,18 @@
     .help-body { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 12px; font-size: 12px; color: #374151; line-height: 1.55; }
     .help-body h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #5a7a82; margin-bottom: 4px; }
     .help-body ul { padding-left: 16px; }
+    .role-card { background: #fff; border-radius: 12px; padding: 16px 22px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 20px; overflow-x: auto; }
+    .role-card h3 { font-size: 13px; font-weight: 700; color: #1a2e35; margin-bottom: 4px; }
+    .role-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 760px; }
+    .role-table th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #5a7a82; padding: 6px 8px; border-bottom: 2px solid #eef2f4; text-align: right; }
+    .role-table th:first-child, .role-table td:first-child { text-align: left; }
+    .role-table th.grp { text-align: center; border-bottom: 1px solid #eef2f4; color: #003237; }
+    .role-table td { padding: 7px 8px; border-bottom: 1px solid #f0f4f5; text-align: right; color: #1a2e35; font-weight: 600; }
+    .role-table td:first-child { font-weight: 700; }
+    .gap-short { color: #991b1b; font-weight: 800; }
+    .gap-over  { color: #92400e; font-weight: 700; }
+    .gap-ok    { color: #065f46; font-weight: 700; }
+    .role-table td.sep, .role-table th.sep { border-left: 2px solid #eef2f4; }
     @media (max-width: 900px) { .help-body { grid-template-columns: 1fr; } }
     @media (max-width: 900px) { .horizon-grid { grid-template-columns: 1fr; } }
   </style>
@@ -184,6 +196,12 @@
     </details>
 
     <div class="horizon-grid" id="horizonGrid"></div>
+
+    <div class="role-card" id="roleCard" style="display:none">
+      <h3>Detalle por rol</h3>
+      <div class="hires-sub">Cada persona cuenta en su <b>rol principal</b> (Rol Háptica 1 de Roles_Usuarios). Las vacantes, los ingresos y los proyectos nuevos usan el rol que les indiques. Un FTE sobrante en un rol no cubre la falta en otro.</div>
+      <div id="roleTable"></div>
+    </div>
 
     <div class="hires-card" id="hiresCard" style="display:none">
       <h3>Escenario simulado</h3>
@@ -273,6 +291,7 @@ const HORIZONTES = [
 
 let demanda       = {};   // demanda[persona][proyecto][semanaAnioKey] = horas presupuestadas
 let personasActivas = []; // en Roles_Usuarios y sin marca de inactiva
+let rolPrincipal   = {};   // { persona: rol principal (Rol Háptica 1) }
 let capacidades   = {};   // { persona: fracción de tiempo disponible } — ausente = 1
 let weekRange     = [];   // desde el mes actual hacia adelante
 let proyectoEstado = {};
@@ -300,11 +319,12 @@ async function loadData() {
   document.getElementById('matrixContainer').innerHTML =
     '<div class="state-msg"><div class="spinner"></div>Cargando datos…</div>';
   try {
-    const [dataRes, todas, estado, caps] = await Promise.all([
+    const [dataRes, todas, estado, caps, roles] = await Promise.all([
       gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_DATA }),
       fetchAllPersonas(),
       fetchPersonasInactivas(),
       fetchCapacidadesPersonas(),
+      fetchRolesPrincipales(),
       loadProyectosCatalog(),
     ]);
 
@@ -326,6 +346,7 @@ async function loadData() {
 
     personasActivas = todas.filter(p => !estado.inactivas.has(p)).sort();
     capacidades = caps;
+    rolPrincipal = roles;
 
     buildWeekRange();
     buildDemanda();
@@ -383,6 +404,34 @@ function buildDemanda() {
 }
 
 // ── Cálculo semanal: demanda, capacidad y carga del equipo ──────────────────
+// Rol principal de cada persona: primera columna "Rol Háptica 1" de Roles_Usuarios
+async function fetchRolesPrincipales() {
+  try {
+    const res = await gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_ROLES,
+    });
+    const rows = res.result.values || [];
+    const h = (rows[0] || []).map(x => x.trim().toLowerCase());
+    const iP = h.indexOf('persona');
+    const iR = h.indexOf('rol háptica 1');
+    const out = {};
+    if (iP === -1 || iR === -1) return out;
+    rows.slice(1).forEach(r => {
+      const nombre = normalizaColaborador((r[iP] || '').trim());
+      const rol = (r[iR] || '').trim();
+      if (nombre && rol) out[nombre] = STAFFING_ROLES.find(x => x.toLowerCase() === rol.toLowerCase()) || rol;
+    });
+    return out;
+  } catch (e) { return {}; }
+}
+
+const SIN_ROL = 'Sin rol definido';
+function rolDe(key) {
+  if (esVacKey(key)) { const v = vacantes.find(x => vacKey(x) === key); return v ? v.rol : SIN_ROL; }
+  if (esHireKey(key)) { const h = hires.find(x => hireKey(x) === key); return h && h.rol ? h.rol : SIN_ROL; }
+  return rolPrincipal[key] || SIN_ROL;
+}
+
 function capOf(persona) { return capacidades[persona] || 1; }
 
 function hireMonday(h) {
@@ -413,8 +462,21 @@ function computeWeekly() {
     const nuevos = hires.filter(h => hireMonday(h) <= w.monday).length;
     const headcount = personasActivas.filter(x => activaEn(x, w.monday)).reduce((s, x) => s + capOf(x), 0) + nuevos; // en FTE
     const capacidad = headcount * HORAS_SEMANA;
+    const porRol = {};
+    const add = (r, d, c) => { const o = porRol[r] || (porRol[r] = { demanda: 0, capacidad: 0 }); o.demanda += d; o.capacidad += c; };
+    Object.keys(demEf).forEach(persona => {
+      let h = 0;
+      Object.values(demEf[persona]).forEach(m => { h += m[w.key] || 0; });
+      if (h) add(rolDe(persona), h, 0);
+    });
+    proyectosSim.forEach(pr => {
+      if (!pr.keys.has(w.key)) return;
+      Object.entries(pr.horasPorRol || {}).forEach(([r, hh]) => add(r, hh / pr.keys.size, 0));
+    });
+    personasActivas.filter(x => activaEn(x, w.monday)).forEach(x => add(rolDe(x), 0, capOf(x) * HORAS_SEMANA));
+    hires.filter(h => hireMonday(h) <= w.monday).forEach(h => add(rolDe(hireKey(h)), 0, HORAS_SEMANA));
     const total = asignada + porReasignar + simulada + vacantesH;
-    return { w, asignada, porReasignar, simulada, vacantes: vacantesH, demanda: total, headcount, nuevos, capacidad, carga: capacidad > 0 ? total / capacidad : null };
+    return { w, porRol, asignada, porReasignar, simulada, vacantes: vacantesH, demanda: total, headcount, nuevos, capacidad, carga: capacidad > 0 ? total / capacidad : null };
   });
 }
 
@@ -466,7 +528,7 @@ function addHire() {
   const cur = getCurrentIsoYearWeek();
   const idx = weekRange.findIndex(w => w.semana === cur.semana && w.año === cur.año);
   const start = weekRange[Math.min(Math.max(idx, 0) + 4, weekRange.length - 1)];
-  hires.push({ id: ++hireSeq, nombre: `Nuevo Haptiqueño ${hireSeq}`, startKey: start.key });
+  hires.push({ id: ++hireSeq, nombre: `Nuevo Haptiqueño ${hireSeq}`, startKey: start.key, rol: 'Doer Estrategia' });
   renderEscenario();
   renderAll();
 }
@@ -483,6 +545,10 @@ function onHireName(id, value) {
   const h = hires.find(x => x.id === id);
   if (h) { h.nombre = value; renderAll(); }
 }
+function onHireRol(id, value) {
+  const h = hires.find(x => x.id === id);
+  if (h) { h.rol = value; renderAll(); }
+}
 function onHireStart(id, value) {
   const h = hires.find(x => x.id === id);
   if (h) { h.startKey = value; renderAll(); }
@@ -496,6 +562,8 @@ function renderEscenario() {
   document.getElementById('hiresList').innerHTML = hires.map(h => `
     <div class="hire-row">
       <input type="text" value="${escAttr(h.nombre)}" oninput="onHireName(${h.id}, this.value)" />
+      <label>Rol</label>
+      <select onchange="onHireRol(${h.id}, this.value)">${STAFFING_ROLES.map(r => `<option ${r === h.rol ? 'selected' : ''}>${r}</option>`).join('')}</select>
       <label>Ingresa en</label>
       <select onchange="onHireStart(${h.id}, this.value)">${weekOpts(h.startKey)}</select>
       <button class="btn-remove" onclick="removeHire(${h.id})">✕ Quitar</button>
@@ -701,14 +769,16 @@ function confirmProyecto() {
   const cliente = document.getElementById('pCliente').value.trim();
   if (!codigo) { alert('Ingresa el código del proyecto.'); return; }
   const duracion = Math.max(1, Math.round(Number(document.getElementById('pDuracion').value) || 1));
-  const total = STAFFING_ROLES.reduce((s, _, i) => s + (Number(document.getElementById('pHoras' + i).value) || 0), 0);
+  const horasPorRol = {};
+  STAFFING_ROLES.forEach((r, i) => { const v = Number(document.getElementById('pHoras' + i).value) || 0; if (v > 0) horasPorRol[r] = v; });
+  const total = Object.values(horasPorRol).reduce((s, v) => s + v, 0);
   if (total <= 0) { alert('Ingresa horas en al menos un rol.'); return; }
   const startKey = document.getElementById('pSemanaInicio').value;
   const full = getFullWeekRange();
   const idx = full.findIndex(w => w.key === startKey);
   const keys = new Set(full.slice(idx, idx + duracion).map(w => w.key));
   proyectosSim.push({
-    id: ++hireSeq, codigo, cliente, keys, semanas: duracion, total, startKey,
+    id: ++hireSeq, codigo, cliente, keys, semanas: duracion, total, startKey, horasPorRol,
     horasSemana: total / keys.size,
   });
   closeProyectoModal();
@@ -721,7 +791,53 @@ function renderAll() {
   demEf = buildDemEf();
   const weekly = computeWeekly();
   renderHorizontes(weekly);
+  renderPorRol(weekly);
   renderMatrix(weekly);
+}
+
+function renderPorRol(weekly) {
+  const cur = getCurrentIsoYearWeek();
+  const curMonday = getWeekMonday(cur.semana, cur.año).getTime();
+  const futuras = weekly.filter(x => x.w.monday >= curMonday);
+  const objetivo = targetFraction();
+  const card = document.getElementById('roleCard');
+
+  const roles = [...STAFFING_ROLES, SIN_ROL].filter(r =>
+    futuras.some(x => x.porRol[r] && (x.porRol[r].demanda > 0 || x.porRol[r].capacidad > 0)));
+  if (!roles.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+
+  const calc = (rol, n) => {
+    const ventana = futuras.slice(0, n);
+    const k = ventana.length || 1;
+    const dem = ventana.reduce((a, x) => a + ((x.porRol[rol] && x.porRol[rol].demanda) || 0), 0);
+    const cap = ventana.reduce((a, x) => a + ((x.porRol[rol] && x.porRol[rol].capacidad) || 0), 0);
+    const demProm = dem / k;
+    const fteEq = cap / k / HORAS_SEMANA;
+    const fteReq = demProm / (HORAS_SEMANA * objetivo);
+    return { carga: cap > 0 ? dem / cap : null, demProm, fteEq, fteReq, brecha: fteReq - fteEq };
+  };
+  const celdaBrecha = b => b > 0.5 ? `<span class="gap-short">Faltan ${b.toFixed(1)}</span>`
+    : b < -0.5 ? `<span class="gap-over">Sobran ${(-b).toFixed(1)}</span>` : `<span class="gap-ok">OK</span>`;
+
+  let html = '<table class="role-table"><thead><tr><th rowspan="2">Rol</th>';
+  HORIZONTES.forEach(hz => { html += `<th class="grp sep" colspan="4">${hz.label}</th>`; });
+  html += '</tr><tr>';
+  HORIZONTES.forEach(() => { html += '<th class="sep">Carga</th><th>FTE req.</th><th>Equipo</th><th>Brecha</th>'; });
+  html += '</tr></thead><tbody>';
+  roles.forEach(rol => {
+    html += `<tr><td>${rol}</td>`;
+    HORIZONTES.forEach(hz => {
+      const c = calc(rol, hz.semanas);
+      const cargaHtml = c.carga === null
+        ? (c.demProm > 0 ? '<span class="pct-cell pct-over">sin equipo</span>' : '—')
+        : `<span class="pct-cell ${pctClass(c.carga)}">${fmtPct(c.carga)}</span>`;
+      html += `<td class="sep">${cargaHtml}</td><td>${c.fteReq.toFixed(1)}</td><td>${c.fteEq.toFixed(1)}</td><td>${celdaBrecha(c.brecha)}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById('roleTable').innerHTML = html;
 }
 
 function renderMatrix(weekly) {
