@@ -470,7 +470,7 @@ function rolDe(key) {
   return rolPrincipal[key] || SIN_ROL;
 }
 
-function capOf(persona) { return capacidades[persona] || 1; }
+function capOf(persona) { return persona in capacidades ? capacidades[persona] : 1; }
 
 function hireMonday(h) {
   const w = weekRange.find(x => x.key === h.startKey);

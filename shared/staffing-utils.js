@@ -296,7 +296,7 @@ async function fetchCapacidadesPersonas() {
       let v = parseFloat(raw);
       if (isNaN(v)) return;
       if (raw.endsWith('%') || v > 1) v = v / 100;
-      if (v > 0 && v < 1) out[nombre] = Math.min(v, 1);
+      if (v >= 0 && v < 1) out[nombre] = v; // 0% = persona sin disponibilidad
     });
     return out;
   } catch (e) { return {}; }
