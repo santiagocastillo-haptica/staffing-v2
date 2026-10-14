@@ -158,6 +158,9 @@
         </label>
       </div>
       <div class="toolbar-right">
+        <span id="escenarioEstado" style="font-size:12px;color:#5a7a82"></span>
+        <button class="btn-secondary" onclick="openEscenariosModal()">📂 Escenarios</button>
+        <button class="btn-primary" onclick="openGuardarModal()">💾 Guardar escenario</button>
         <button class="btn-secondary" onclick="resetEscenario()">↺ Reiniciar escenario</button>
         <button class="btn-secondary" onclick="addSalida()">－ Quitar Haptiqueño</button>
         <button class="btn-secondary" onclick="openVacanteModal()">＋ Vacante</button>
@@ -166,13 +169,18 @@
       </div>
     </div>
 
+    <div id="borradorBanner" style="display:none;align-items:center;justify-content:space-between;gap:12px;background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:10px 16px;margin-bottom:14px;font-size:13px;color:#92400e;flex-wrap:wrap">
+      <span id="borradorTexto"></span>
+      <span style="display:flex;gap:8px"><button class="btn-primary" onclick="recuperarBorrador()">Recuperar</button><button class="btn-secondary" onclick="descartarBorrador()">Descartar</button></span>
+    </div>
+
     <details class="help-card" id="helpCard" open>
       <summary>¿Cómo se usa Planeación Equipo?</summary>
       <div class="help-body">
         <div>
           <h4>1. Qué es</h4>
           Una simulación para saber si el equipo alcanza para lo que viene. Parte de las horas presupuestadas reales y de las personas activas.
-          <b>Nada de lo que hagas aquí se guarda</b>: al recargar o con ↺ Reiniciar escenario, todo vuelve al estado real.
+          <b>No cambia los datos reales.</b> Con <b>💾 Guardar escenario</b> lo guardas con nombre para volver a él (📂 Escenarios); además se guarda un borrador en tu navegador por si recargas. ↺ Reiniciar escenario vuelve todo al estado real.
         </div>
         <div>
           <h4>2. Cómo leer el resultado</h4>
@@ -205,7 +213,7 @@
 
     <div class="hires-card" id="hiresCard" style="display:none">
       <h3>Escenario simulado</h3>
-      <div class="hires-sub">Nada de esto se guarda: es solo para ver cómo cambian la carga y los FTEs. Puedes editar las horas de cualquier celda de la matriz (en naranja las que cambiaste) y agregar proyectos a una persona con ＋ agregar proyecto. Cada ingreso suma 1 FTE (40 h por semana); la capacidad de cada persona activa sale de la columna <b>Capacidad</b> de Roles_Usuarios.</div>
+      <div class="hires-sub">Esto no cambia los datos reales: es para ver cómo varían la carga y los FTEs (guárdalo con 💾 para volver a él). Puedes editar las horas de cualquier celda de la matriz (en naranja las que cambiaste) y agregar proyectos a una persona con ＋ agregar proyecto. Cada ingreso suma 1 FTE (40 h por semana); la capacidad de cada persona activa sale de la columna <b>Capacidad</b> de Roles_Usuarios.</div>
       <div class="scn-section" id="secHires" style="display:none"><div class="scn-title">Ingresos</div><div id="hiresList"></div></div>
       <div class="scn-section" id="secVacantes" style="display:none"><div class="scn-title">Vacantes por cubrir</div><div id="vacantesList"></div></div>
       <div class="scn-section" id="secSalidas" style="display:none"><div class="scn-title">Salidas</div><div id="salidasList"></div></div>
@@ -222,7 +230,7 @@
 <div class="modal-overlay" id="proyectoModal">
   <div class="modal">
     <h3>Nuevo proyecto (simulado)</h3>
-    <div class="modal-hint">Se reparte el total de horas en partes iguales entre las semanas de duración y se suma a la demanda como horas sin asignar a una persona. No se guarda.</div>
+    <div class="modal-hint">Se reparte el total de horas en partes iguales entre las semanas de duración y se suma a la demanda como horas sin asignar a una persona. No cambia los datos reales.</div>
     <div class="pm-grid">
       <div class="modal-field"><label>Cliente</label><input type="text" id="pCliente" autocomplete="off" /></div>
       <div class="modal-field"><label>Código</label><input type="text" id="pCodigo" placeholder="Ej: TELMEX-02" autocomplete="off" /></div>
@@ -242,7 +250,7 @@
 <div class="modal-overlay" id="addProyModal">
   <div class="modal" style="width:380px">
     <h3>Agregar proyecto a <span id="addProyPersona"></span></h3>
-    <div class="modal-hint">Elige un proyecto existente o escribe uno nuevo; luego digita las horas por semana en su fila. No se guarda.</div>
+    <div class="modal-hint">Elige un proyecto existente o escribe uno nuevo; luego digita las horas por semana en su fila. No cambia los datos reales.</div>
     <div class="modal-field">
       <label>Proyecto</label>
       <input type="text" id="addProyInput" list="addProyOptions" placeholder="Escribe para buscar…" autocomplete="off" />
@@ -278,6 +286,29 @@
   </div>
 </div>
 
+<!-- Modal guardar escenario -->
+<div class="modal-overlay" id="guardarModal">
+  <div class="modal" style="width:420px">
+    <h3>Guardar escenario</h3>
+    <div class="modal-hint">Se guarda en el Sheet (pestaña Planeacion_Escenarios) con tu nombre y la fecha, para que tú o el equipo puedan volver a él. No cambia los datos reales.</div>
+    <div class="modal-field"><label>Nombre</label><input type="text" id="gNombre" placeholder="Ej: Q1 2027 con 2 abogados" autocomplete="off" /></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeGuardarModal()">Cancelar</button>
+      <button class="btn-secondary" id="gActualizar" onclick="guardarEscenario(true)">Actualizar el actual</button>
+      <button class="btn-primary" onclick="guardarEscenario(false)">Guardar como nuevo</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal escenarios guardados -->
+<div class="modal-overlay" id="escenariosModal">
+  <div class="modal" style="width:720px">
+    <h3>Escenarios guardados</h3>
+    <div id="escenariosLista"></div>
+    <div class="modal-actions"><button class="btn-secondary" onclick="closeEscenariosModal()">Cerrar</button></div>
+  </div>
+</div>
+
 <script src="shared/staffing-utils.js"></script>
 <script src="shared/auth.js"></script>
 <script src="shared/nav.js"></script>
@@ -306,6 +337,12 @@ let modalPersona  = null;
 let vacantes      = [];   // [{ id, proyecto, rol, startKey, semanas, horasSemana }] — roles por cubrir en proyectos existentes
 const vacKey = v => '#v' + v.id;
 const esVacKey = k => k.startsWith('#v');
+const SHEET_ESCENARIOS = 'Planeacion_Escenarios';
+const DRAFT_KEY = 'planeacionBorrador';
+let miPersona = '';
+let escenarioActual = null;     // { id, nombre } del escenario cargado/guardado
+let ultimoGuardadoJSON = null;  // snapshot en el último guardado/carga, para detectar cambios
+let escenariosCache = [];
 const hireKey = h => '#h' + h.id;
 const esHireKey = k => k.startsWith('#h');
 function nombreDe(k) {
@@ -353,6 +390,7 @@ async function loadData() {
     renderAll();
     renderEscenario();
     updateTimestamp();
+    mostrarBorrador();
   } catch (err) {
     console.error(err);
     document.getElementById('matrixContainer').innerHTML =
@@ -724,6 +762,224 @@ function asignarVacante(id, personaKey) {
   removeVacante(id);
 }
 
+// ── Guardar / cargar escenarios ─────────────────────────────────────────────
+function snapshotEscenario() {
+  return {
+    v: 1,
+    objetivo: Number(document.getElementById('targetPct').value) || 85,
+    hireSeq, hires, salidas, vacantes, ajustes,
+    proyectosSim: proyectosSim.map(({ keys, ...rest }) => rest),
+    filasExtra: Object.fromEntries(Object.entries(filasExtra).map(([k, s]) => [k, [...s]])),
+  };
+}
+
+function aplicarEscenario(d) {
+  hires = d.hires || []; salidas = d.salidas || []; vacantes = d.vacantes || [];
+  ajustes = d.ajustes || {};
+  hireSeq = Math.max(hireSeq, d.hireSeq || 0);
+  filasExtra = Object.fromEntries(Object.entries(d.filasExtra || {}).map(([k, a]) => [k, new Set(a)]));
+  const full = getFullWeekRange();
+  proyectosSim = (d.proyectosSim || []).map(pr => {
+    const idx = full.findIndex(w => w.key === pr.startKey);
+    return { ...pr, keys: new Set(full.slice(Math.max(idx, 0), Math.max(idx, 0) + pr.semanas).map(w => w.key)) };
+  });
+  document.getElementById('targetPct').value = d.objetivo || 85;
+}
+
+function escenarioVacio() {
+  return !(hires.length || salidas.length || vacantes.length || proyectosSim.length ||
+    Object.keys(ajustes).length || Object.values(filasExtra).some(s => s.size));
+}
+
+function resumenEscenario() {
+  const celdas = Object.values(ajustes).reduce((s, pr) => s + Object.values(pr).reduce((a, m) => a + Object.keys(m).length, 0), 0);
+  const partes = [];
+  if (hires.length) partes.push(`${hires.length} ingreso${hires.length > 1 ? 's' : ''}`);
+  if (salidas.length) partes.push(`${salidas.length} salida${salidas.length > 1 ? 's' : ''}`);
+  if (vacantes.length) partes.push(`${vacantes.length} vacante${vacantes.length > 1 ? 's' : ''}`);
+  if (proyectosSim.length) partes.push(`${proyectosSim.length} proyecto${proyectosSim.length > 1 ? 's' : ''} nuevo${proyectosSim.length > 1 ? 's' : ''}`);
+  if (celdas) partes.push(`${celdas} celda${celdas > 1 ? 's' : ''} editada${celdas > 1 ? 's' : ''}`);
+  return partes.join(', ') || 'Sin cambios';
+}
+
+// Borrador automático en el navegador: sobrevive a un refresh
+function guardarBorrador() {
+  try {
+    if (!escenarioVacio()) localStorage.setItem(DRAFT_KEY, JSON.stringify({ t: Date.now(), nombre: escenarioActual ? escenarioActual.nombre : '', data: snapshotEscenario() }));
+  } catch (e) { /* sin almacenamiento disponible */ }
+  actualizarEstadoEscenario();
+}
+
+function actualizarEstadoEscenario() {
+  const el = document.getElementById('escenarioEstado');
+  if (!el) return;
+  const cambios = ultimoGuardadoJSON !== null ? JSON.stringify(snapshotEscenario()) !== ultimoGuardadoJSON : !escenarioVacio();
+  if (escenarioActual) el.innerHTML = `Escenario: <b>${escenarioActual.nombre}</b>${cambios ? ' · <span style="color:#b45309">cambios sin guardar</span>' : ' · guardado'}`;
+  else el.innerHTML = escenarioVacio() ? '' : '<span style="color:#b45309">Escenario sin guardar</span>';
+}
+
+function mostrarBorrador() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return;
+    const b = JSON.parse(raw);
+    if (!b || !b.data) return;
+    const cuando = new Date(b.t).toLocaleString('es-CL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    document.getElementById('borradorTexto').textContent =
+      `Tienes un borrador sin guardar${b.nombre ? ' de «' + b.nombre + '»' : ''} (${cuando}).`;
+    document.getElementById('borradorBanner').style.display = 'flex';
+  } catch (e) { /* borrador ilegible */ }
+}
+
+function recuperarBorrador() {
+  try {
+    const b = JSON.parse(localStorage.getItem(DRAFT_KEY));
+    aplicarEscenario(b.data);
+    escenarioActual = null; ultimoGuardadoJSON = null;
+  } catch (e) { alert('No se pudo recuperar el borrador.'); }
+  document.getElementById('borradorBanner').style.display = 'none';
+  renderEscenario(); renderAll();
+}
+
+function descartarBorrador() {
+  try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+  document.getElementById('borradorBanner').style.display = 'none';
+}
+
+async function ensureEscenariosSheet() {
+  try {
+    await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: `${SHEET_ESCENARIOS}!A1:G1` });
+  } catch (e) {
+    await gapi.client.sheets.spreadsheets.batchUpdate({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID,
+      resource: { requests: [{ addSheet: { properties: { title: SHEET_ESCENARIOS } } }] },
+    });
+    await gapi.client.sheets.spreadsheets.values.update({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: `${SHEET_ESCENARIOS}!A1:G1`,
+      valueInputOption: 'RAW', resource: { values: [['ID', 'Nombre', 'Creado por', 'Fecha', 'Objetivo %', 'Resumen', 'Datos 1']] },
+    });
+  }
+}
+
+async function listarEscenarios() {
+  await ensureEscenariosSheet();
+  const res = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_ESCENARIOS });
+  const rows = (res.result.values || []).slice(1);
+  escenariosCache = rows.map((r, i) => ({
+    row: i + 2, id: r[0], nombre: r[1] || '(sin nombre)', creador: r[2] || '', fecha: r[3] || '',
+    objetivo: r[4] || '', resumen: r[5] || '', json: r.slice(6).join(''),
+  })).filter(e => e.id);
+  return escenariosCache;
+}
+
+function openGuardarModal() {
+  document.getElementById('gNombre').value = escenarioActual ? escenarioActual.nombre : '';
+  document.getElementById('gActualizar').style.display = escenarioActual ? 'inline-flex' : 'none';
+  document.getElementById('guardarModal').classList.add('open');
+}
+function closeGuardarModal() { document.getElementById('guardarModal').classList.remove('open'); }
+
+async function guardarEscenario(actualizar) {
+  const nombre = document.getElementById('gNombre').value.trim();
+  if (!nombre) { alert('Ponle un nombre al escenario.'); return; }
+  if (escenarioVacio()) { alert('El escenario está vacío: agrega ingresos, salidas, vacantes, proyectos o edita horas antes de guardarlo.'); return; }
+  const btns = document.querySelectorAll('#guardarModal button');
+  btns.forEach(b => { b.disabled = true; });
+  try {
+    await ensureEscenariosSheet();
+    const snap = snapshotEscenario();
+    const json = JSON.stringify(snap);
+    const chunks = json.match(/[\s\S]{1,40000}/g) || [];
+    let id = 'E' + Date.now().toString(36);
+    let fila = null;
+    if (actualizar && escenarioActual) {
+      const col = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: `${SHEET_ESCENARIOS}!A:A` });
+      const idx = (col.result.values || []).findIndex(r => r[0] === escenarioActual.id);
+      if (idx > 0) { id = escenarioActual.id; fila = idx + 1; }
+    }
+    const values = [[id, nombre, miPersona, new Date().toISOString(), snap.objetivo, resumenEscenario(), ...chunks]];
+    if (fila) {
+      await gapi.client.sheets.spreadsheets.values.clear({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: `${SHEET_ESCENARIOS}!A${fila}:AZ${fila}` });
+      await gapi.client.sheets.spreadsheets.values.update({
+        spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: `${SHEET_ESCENARIOS}!A${fila}`, valueInputOption: 'RAW', resource: { values },
+      });
+    } else {
+      await gapi.client.sheets.spreadsheets.values.append({
+        spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: `${SHEET_ESCENARIOS}!A1`,
+        valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS', resource: { values },
+      });
+    }
+    escenarioActual = { id, nombre };
+    ultimoGuardadoJSON = json;
+    try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+    closeGuardarModal();
+    actualizarEstadoEscenario();
+  } catch (err) {
+    console.error(err);
+    alert('No se pudo guardar el escenario: ' + errMsg(err));
+  } finally {
+    btns.forEach(b => { b.disabled = false; });
+  }
+}
+
+async function openEscenariosModal() {
+  document.getElementById('escenariosModal').classList.add('open');
+  const cont = document.getElementById('escenariosLista');
+  cont.innerHTML = '<div class="state-msg"><div class="spinner"></div>Cargando…</div>';
+  try {
+    const lista = await listarEscenarios();
+    if (!lista.length) { cont.innerHTML = '<div class="state-msg">Todavía no hay escenarios guardados.</div>'; return; }
+    cont.innerHTML = '<table class="role-table" style="min-width:0"><thead><tr><th>Escenario</th><th>Creado por</th><th>Fecha</th><th></th></tr></thead><tbody>' +
+      [...lista].reverse().map(e => `<tr>
+        <td><b>${e.nombre}</b><div class="scn-meta">${e.resumen}</div></td>
+        <td style="font-weight:500">${e.creador}</td>
+        <td style="font-weight:500">${e.fecha ? new Date(e.fecha).toLocaleString('es-CL', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}</td>
+        <td style="white-space:nowrap"><button class="btn-primary" style="padding:5px 12px;font-size:12px" onclick="cargarEscenario('${e.id}')">Abrir</button>
+            <button class="btn-remove" onclick="eliminarEscenario('${e.id}')">Eliminar</button></td></tr>`).join('') + '</tbody></table>';
+  } catch (err) {
+    console.error(err);
+    cont.innerHTML = `<div class="state-msg">⚠️ ${errMsg(err)}</div>`;
+  }
+}
+function closeEscenariosModal() { document.getElementById('escenariosModal').classList.remove('open'); }
+
+function cargarEscenario(id) {
+  const e = escenariosCache.find(x => x.id === id);
+  if (!e) return;
+  if (!escenarioVacio() && ultimoGuardadoJSON !== JSON.stringify(snapshotEscenario()) &&
+      !confirm('Tienes cambios sin guardar en el escenario actual. ¿Abrir otro de todas formas?')) return;
+  try {
+    aplicarEscenario(JSON.parse(e.json));
+  } catch (err) { alert('Este escenario no se pudo leer.'); return; }
+  escenarioActual = { id: e.id, nombre: e.nombre };
+  ultimoGuardadoJSON = JSON.stringify(snapshotEscenario());
+  try { localStorage.removeItem(DRAFT_KEY); } catch (e2) {}
+  closeEscenariosModal();
+  renderEscenario();
+  renderAll();
+}
+
+async function eliminarEscenario(id) {
+  const e = escenariosCache.find(x => x.id === id);
+  if (!e || !confirm(`¿Eliminar el escenario «${e.nombre}»? Esta acción no se puede deshacer.`)) return;
+  try {
+    const meta = await gapi.client.sheets.spreadsheets.get({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, fields: 'sheets.properties' });
+    const hoja = meta.result.sheets.find(s => s.properties.title === SHEET_ESCENARIOS);
+    const col = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: `${SHEET_ESCENARIOS}!A:A` });
+    const idx = (col.result.values || []).findIndex(r => r[0] === id);
+    if (idx < 1) throw new Error('No se encontró el escenario en el Sheet.');
+    await gapi.client.sheets.spreadsheets.batchUpdate({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID,
+      resource: { requests: [{ deleteDimension: { range: { sheetId: hoja.properties.sheetId, dimension: 'ROWS', startIndex: idx, endIndex: idx + 1 } } }] },
+    });
+    if (escenarioActual && escenarioActual.id === id) { escenarioActual = null; ultimoGuardadoJSON = null; actualizarEstadoEscenario(); }
+    openEscenariosModal();
+  } catch (err) {
+    console.error(err);
+    alert('No se pudo eliminar: ' + errMsg(err));
+  }
+}
+
 function onTargetChange() { renderAll(); }
 
 function defaultStartKey() {
@@ -747,6 +1003,8 @@ function removeProyectoSim(id) { proyectosSim = proyectosSim.filter(x => x.id !=
 
 function resetEscenario() {
   hires = []; salidas = []; proyectosSim = []; vacantes = []; ajustes = {}; filasExtra = {};
+  escenarioActual = null; ultimoGuardadoJSON = null;
+  try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
   renderEscenario();
   renderAll();
 }
@@ -793,6 +1051,7 @@ function renderAll() {
   renderHorizontes(weekly);
   renderPorRol(weekly);
   renderMatrix(weekly);
+  guardarBorrador();
 }
 
 function renderPorRol(weekly) {
@@ -1023,6 +1282,7 @@ HapticaAuth.init({
   requiredView: 'planeacion',
   onReady: (session) => {
     HapticaNav.render('navContainer', { ...session, currentView: 'planeacion' });
+    miPersona = session.persona;
     loadData();
   }
 });
