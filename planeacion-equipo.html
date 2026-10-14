@@ -498,7 +498,9 @@ function computeWeekly() {
     });
     const simulada = proyectosSim.reduce((s, pr) => s + (pr.keys.has(w.key) ? pr.horasSemana : 0), 0);
     const nuevos = hires.filter(h => hireMonday(h) <= w.monday).length;
-    const headcount = personasActivas.filter(x => activaEn(x, w.monday)).reduce((s, x) => s + capOf(x), 0) + nuevos; // en FTE
+    const activasEn = personasActivas.filter(x => activaEn(x, w.monday));
+    const nPersonas = activasEn.length + nuevos;
+    const headcount = activasEn.reduce((s, x) => s + capOf(x), 0) + nuevos; // en FTE
     const capacidad = headcount * HORAS_SEMANA;
     const porRol = {};
     const add = (r, d, c) => { const o = porRol[r] || (porRol[r] = { demanda: 0, capacidad: 0 }); o.demanda += d; o.capacidad += c; };
@@ -514,7 +516,7 @@ function computeWeekly() {
     personasActivas.filter(x => activaEn(x, w.monday)).forEach(x => add(rolDe(x), 0, capOf(x) * HORAS_SEMANA));
     hires.filter(h => hireMonday(h) <= w.monday).forEach(h => add(rolDe(hireKey(h)), 0, HORAS_SEMANA));
     const total = asignada + porReasignar + simulada + vacantesH;
-    return { w, porRol, asignada, porReasignar, simulada, vacantes: vacantesH, demanda: total, headcount, nuevos, capacidad, carga: capacidad > 0 ? total / capacidad : null };
+    return { w, porRol, asignada, porReasignar, simulada, vacantes: vacantesH, demanda: total, headcount, nPersonas, nuevos, capacidad, carga: capacidad > 0 ? total / capacidad : null };
   });
 }
 
@@ -1128,8 +1130,11 @@ function renderMatrix(weekly) {
   thead += '<tr class="row-team"><th class="col-name">Demanda (h)</th>';
   weekly.forEach(x => { thead += `<th>${x.demanda ? fmt(x.demanda) : ''}</th>`; });
   thead += '</tr>';
-  thead += '<tr class="row-team"><th class="col-name">Capacidad (h)</th>';
-  weekly.forEach(x => { thead += `<th class="${x.nuevos ? 'hire-cap' : ''}">${fmt(x.capacidad)}</th>`; });
+  thead += '<tr class="row-team"><th class="col-name" title="Capacidad ponderada: FTE disponibles ÷ personas del equipo (cada persona pesa según su % de Capacidad)">Capacidad (% pond.)</th>';
+  weekly.forEach(x => {
+    const pond = x.nPersonas > 0 ? x.headcount / x.nPersonas : null;
+    thead += `<th class="${x.nuevos ? 'hire-cap' : ''}" title="${x.headcount.toFixed(1)} FTE entre ${x.nPersonas} personas (${fmt(x.capacidad)} h)">${pond === null ? '' : fmtPct(pond)}</th>`;
+  });
   thead += '</tr>';
   thead += '<tr class="row-team last"><th class="col-name">Carga del equipo</th>';
   weekly.forEach(x => {
