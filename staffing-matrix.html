@@ -779,17 +779,17 @@ function buildDesgloseTheadHtml(weeks) {
   let thead = '<thead>';
   thead += '<tr class="row-month"><th class="col-name"></th>';
   monthGroups.forEach(g => { thead += `<th colspan="${g.count}">${g.label}</th>`; });
-  thead += '<th></th></tr>';
+  thead += '<th></th><th></th></tr>';
 
   thead += '<tr class="row-dates"><th class="col-name"></th>';
   weeks.forEach(w => { thead += `<th>${weekDateLabel(w.semana, w.año)}</th>`; });
-  thead += '<th></th></tr>';
+  thead += '<th></th><th></th></tr>';
 
   thead += '<tr class="row-weeks"><th class="col-name"></th>';
   weeks.forEach(w => {
     thead += `<th style="${isCurWeek(w) ? 'background:#FA4616;color:#fff' : ''}">${w.semana}<br><span style="font-size:9px;font-weight:600;opacity:.7">${w.año}</span></th>`;
   });
-  thead += '<th>Total</th></tr>';
+  thead += '<th title="Suma solo de las semanas visibles en esta tabla">Total sem. visibles</th><th title="Suma de todas las semanas del proyecto: coincide con Presup. total proyecto del detalle de arriba">Total proyecto</th></tr>';
   thead += '</thead>';
   return thead;
 }
@@ -804,7 +804,8 @@ function renderDesgloseTabla(proyecto) {
   const tbody = personas.map(p => {
     const cells = weeks.map(w => `<td>${fmt(equipoMatrix[p][w.key] || 0)}</td>`).join('');
     const total = weeks.reduce((a, w) => a + (equipoMatrix[p][w.key] || 0), 0);
-    return `<tr class="row-clasico-project"><td class="col-name">${p}</td>${cells}<td><strong>${fmt(total)}</strong></td></tr>`;
+    const totalProyecto = Object.values(equipoMatrix[p]).reduce((a, h) => a + h, 0);
+    return `<tr class="row-clasico-project"><td class="col-name">${p}</td>${cells}<td><strong>${fmt(total)}</strong></td><td class="col-total"><strong>${fmt(totalProyecto)}</strong></td></tr>`;
   }).join('');
 
   return `
