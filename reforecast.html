@@ -49,6 +49,18 @@
     .rf-input.changed { border-color: #f59e0b; background: #fffbeb; }
     .rf-input::-webkit-inner-spin-button, .rf-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
     .rf-input[type=number] { -moz-appearance: textfield; }
+    .rf-free { font-size:9px; font-weight:600; margin-top:2px; color:#5b7379; white-space:nowrap; }
+    .rf-free.neg { color:#b91c1c; }
+    .rf-free.low { color:#b45309; }
+    .rf-input.over { border-color:#dc2626; background:#fef2f2; }
+    .sug-box { margin:12px 0 4px; padding:12px 14px; border:1px solid #d4dfe2; border-radius:10px; background:#f8fbfa; font-size:12px; }
+    .sug-box.warn { border-color:#fdba74; background:#fff7ed; }
+    .sug-title { font-weight:700; color:#1a2e35; margin-bottom:6px; }
+    .sug-chip { display:inline-flex; align-items:center; gap:6px; background:#fff; border:1px solid #003237; color:#003237; border-radius:99px; padding:4px 12px; margin:3px 6px 3px 0; font-weight:600; cursor:pointer; font-size:12px; }
+    .sug-chip:hover { background:#003237; color:#fff; }
+    .sug-chip small { font-weight:500; opacity:.8; }
+    .rf-rm { border:none; background:none; cursor:pointer; color:#991b1b; font-weight:800; margin-left:6px; }
+    .rf-tag { font-size:9px; background:#003237; color:#fff; border-radius:4px; padding:1px 5px; margin-left:6px; font-weight:700; vertical-align:middle; }
     .rf-readonly { font-weight: 600; color: #1a2e35; }
 
     /* ── Encabezado de semanas (mismo formato que Registro de Horas) ────── */
@@ -176,6 +188,7 @@
         <div style="overflow-x:auto">
           <table class="rf-table" id="modTable"></table>
         </div>
+        <div id="sugBox"></div>
         <div class="modal-actions" id="modActions" style="justify-content:flex-start; margin-top:16px"></div>
       </div>
 
@@ -202,11 +215,17 @@ let solicitudes = []; // filas de Solicitudes_Tiempo
 let solHeaders  = [], solColIdx = {};
 
 let selectedProyecto = '';
+let capacidadesRf = {};        // persona → fracción (solo las distintas de 100%)
+let personasRf = [];           // todo el equipo activo (Roles_Usuarios)
+let inactivasRf = new Set();
+let totalesPersonaSemana = {}; // "persona|semKey" → horas presupuestadas en TODOS los proyectos
+let personasExtraRf = new Set(); // personas sugeridas / agregadas a la solicitud
 
 // ── Carga inicial ──────────────────────────────────────────────────────────
 async function loadAll() {
   try {
-    await Promise.all([loadDashboardData(), loadVentaData(), loadSolicitudes(), loadMySides()]);
+    await Promise.all([loadDashboardData(), loadVentaData(), loadSolicitudes(), loadMySides(), loadEquipoInfoRf()]);
+    buildTotalesPersonaSemana();
     populateProyectoSelect();
     renderPendingPanel();
   } catch (err) {
@@ -234,6 +253,30 @@ async function loadDashboardData() {
     return obj;
   }).filter(r => r.semana && r.colaborador);
 }
+
+async function loadEquipoInfoRf() {
+  const [todas, estado, caps] = await Promise.all([fetchAllPersonas(), fetchPersonasInactivas(), fetchCapacidadesPersonas()]);
+  personasRf = todas; inactivasRf = estado.inactivas; capacidadesRf = caps;
+}
+
+function buildTotalesPersonaSemana() {
+  totalesPersonaSemana = {};
+  allData.forEach(r => {
+    const k = r.colaborador + '|' + semanaAnioKey(r.semana, r.año);
+    totalesPersonaSemana[k] = (totalesPersonaSemana[k] || 0) + r.horaspresupuestadas;
+  });
+}
+
+// Horas libres de una persona en una semana, descontando lo que ya tiene en OTROS
+// proyectos y lo que se le propone en este. Capacidad sobre 40 h, ponderada por su % de capacidad.
+function capacidadHoras(p) { return 40 * (p in capacidadesRf ? capacidadesRf[p] : 1); }
+function horasOtrosProyectos(p, wk, equipoMatrix) {
+  const total = totalesPersonaSemana[p + '|' + wk] || 0;
+  const aqui = (equipoMatrix[p] && equipoMatrix[p][wk]) || 0;
+  return total - aqui;
+}
+function freeClass(free, cap) { return free < 0 ? 'neg' : (free < cap * 0.15 ? 'low' : ''); }
+function freeLabel(free) { return free < 0 ? `sobre ${fmt(-free)}h` : `libre ${fmt(free)}h`; }
 
 async function loadVentaData() {
   try {
@@ -524,6 +567,7 @@ function onProyectoChange() {
   if (!selectedProyecto) { document.getElementById('proyectoDetail').style.display = 'none'; return; }
   document.getElementById('proyectoDetail').style.display = 'block';
   semanasExtra = new Set();
+  personasExtraRf = new Set();
   renderEquipoYVenta();
   renderModificacion();
 }
@@ -565,9 +609,12 @@ function renderEquipoYVenta() {
 // ── Modificación solicitada (reforecast) ────────────────────────────────────
 function renderModificacion() {
   const equipoMatrix = computeEquipoMatrix(selectedProyecto);
-  const personas = Object.keys(equipoMatrix).sort();
   const thread = activeThreadFor(selectedProyecto);
   const threadHoras = thread ? JSON.parse(thread.horasJSON || '{}') : {};
+  const enEquipo = new Set(Object.keys(equipoMatrix));
+  const personasHilo = new Set(Object.keys(threadHoras).map(k => k.split('|')[0]));
+  personasHilo.forEach(p => { if (!enEquipo.has(p)) personasExtraRf.add(p); });
+  const personas = [...new Set([...enEquipo, ...personasExtraRf])].sort();
   const weeks = weeksForDisplay(equipoMatrix, threadHoras);
 
   renderExtraWeekBar(weeks, personas.length > 0);
@@ -600,20 +647,30 @@ function renderModificacion() {
   const valueFor = (p, wk) => {
     const k = `${p}|${wk}`;
     if (threadHoras[k] !== undefined) return threadHoras[k];
-    return equipoMatrix[p][wk] || 0;
+    return (equipoMatrix[p] && equipoMatrix[p][wk]) || 0;
   };
+  const hoy = getWeekMonday(getCurrentIsoYearWeek().semana, getCurrentIsoYearWeek().año).getTime();
 
   const thead = buildWeeksTheadHtml(weeks);
   const tbody = personas.map(p => {
+    const cap = capacidadHoras(p);
     const cells = weeks.map(w => {
       const val = valueFor(p, w.key);
+      const otros = horasOtrosProyectos(p, w.key, equipoMatrix);
+      const free = cap - otros - val;
+      const futura = w.monday >= hoy;
+      const freeHtml = futura ? `<div class="rf-free ${freeClass(free, cap)}" data-free-p="${escAttr(p)}" data-free-w="${w.key}" data-otros="${otros}" data-cap="${cap}" title="Capacidad ${fmt(cap)}h − ${fmt(otros)}h en otros proyectos − lo propuesto aquí">${freeLabel(free)}</div>` : '';
       return canAct
-        ? `<td><input class="rf-input" type="number" min="0" step="1" inputmode="numeric" value="${val || ''}" data-persona="${escAttr(p)}" data-week="${w.key}" oninput="this.value = this.value.replace(/[^0-9]/g,'')" /></td>`
-        : `<td class="rf-readonly">${fmt(val)}</td>`;
+        ? `<td><input class="rf-input" type="number" min="0" step="1" inputmode="numeric" value="${val || ''}" data-persona="${escAttr(p)}" data-week="${w.key}" oninput="this.value = this.value.replace(/[^0-9]/g,''); updateLibres()" />${freeHtml}</td>`
+        : `<td class="rf-readonly">${fmt(val)}${freeHtml}</td>`;
     }).join('');
-    return `<tr><td class="rf-name">${p}</td>${cells}</tr>`;
+    const rm = canAct && personasExtraRf.has(p) && !enEquipo.has(p)
+      ? `<span class="rf-tag">NUEVA</span><button class="rf-rm" title="Quitar de la solicitud" onclick="quitarPersonaExtra('${escAttr(p)}')">✕</button>` : '';
+    return `<tr><td class="rf-name">${p}${rm}</td>${cells}</tr>`;
   }).join('');
   table.innerHTML = thead + '<tbody>' + tbody + '</tbody>';
+  renderSugerencias(canAct, personas, weeks, equipoMatrix);
+  updateLibres();
 
   if (!canAct) { actions.innerHTML = ''; return; }
 
@@ -624,6 +681,83 @@ function renderModificacion() {
   } else {
     actions.innerHTML = `<button class="btn-primary" onclick="enviarSolicitudNueva()">Enviar solicitud</button>`;
   }
+}
+
+// ── Sugerir personas ────────────────────────────────────────────────────────
+// Actualiza en vivo el "libre/sobre" de cada celda según lo digitado.
+function updateLibres() {
+  document.querySelectorAll('#modTable .rf-free').forEach(el => {
+    const inp = document.querySelector(`#modTable .rf-input[data-persona="${CSS.escape(el.dataset.freeP)}"][data-week="${el.dataset.freeW}"]`);
+    const val = inp ? (Number(inp.value) || 0) : 0;
+    const cap = Number(el.dataset.cap), otros = Number(el.dataset.otros);
+    const free = cap - otros - val;
+    el.textContent = freeLabel(free);
+    el.className = 'rf-free ' + freeClass(free, cap);
+    if (inp) inp.classList.toggle('over', free < 0 && val > 0);
+  });
+  updateSugerenciasAviso();
+}
+
+function semanasFuturasVisibles(weeks) {
+  const c = getCurrentIsoYearWeek();
+  const hoy = getWeekMonday(c.semana, c.año).getTime();
+  return weeks.filter(w => w.monday >= hoy);
+}
+
+function renderSugerencias(canAct, personas, weeks, equipoMatrix) {
+  const box = document.getElementById('sugBox');
+  if (!canAct) { box.innerHTML = ''; return; }
+  const fut = semanasFuturasVisibles(weeks);
+  const enTabla = new Set(personas);
+  // Candidatos: activos, que no estén ya en la tabla, ordenados por disponibilidad promedio en las semanas visibles
+  const cands = personasRf
+    .filter(p => !enTabla.has(p) && !inactivasRf.has(p) && capacidadHoras(p) > 0)
+    .map(p => {
+      const cap = capacidadHoras(p);
+      const libres = fut.map(w => cap - (totalesPersonaSemana[p + '|' + w.key] || 0));
+      const prom = libres.length ? libres.reduce((a, b) => a + b, 0) / libres.length : cap;
+      return { p, prom, min: libres.length ? Math.min(...libres) : cap };
+    })
+    .sort((a, b) => b.prom - a.prom);
+  const top = cands.filter(c => c.prom > 0).slice(0, 5);
+  const resto = cands.filter(c => !top.includes(c)).sort((a, b) => a.p.localeCompare(b.p));
+  box.innerHTML = `<div class="sug-box" id="sugInner">
+      <div class="sug-title" id="sugTitle">👥 ¿Falta capacidad? Sugiere personas para esta solicitud</div>
+      <div id="sugAviso" style="margin-bottom:6px"></div>
+      <div>${top.length ? top.map(c => `<span class="sug-chip" onclick="agregarPersonaExtra('${escAttr(c.p)}')" title="Horas libres promedio por semana en las semanas visibles (capacidad − horas en todos sus proyectos)">＋ ${c.p} <small>libre prom. ${fmt(Math.round(c.prom))}h/sem</small></span>`).join('') : '<span style="color:#6b8a91">Nadie tiene holgura promedio en las semanas visibles.</span>'}</div>
+      <div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="sugSel" style="padding:6px 10px;border:1.5px solid #d4dfe2;border-radius:7px;font-family:inherit;font-size:12px;min-width:220px">
+          <option value="">Otra persona del equipo…</option>
+          ${top.concat(resto).map(c => `<option value="${escAttr(c.p)}">${c.p} — libre prom. ${fmt(Math.round(c.prom))}h/sem</option>`).join('')}
+        </select>
+        <button class="btn-secondary" onclick="agregarPersonaExtra(document.getElementById('sugSel').value)">＋ Agregar</button>
+      </div>
+      <div style="margin-top:6px;color:#6b8a91">La persona agregada aparece como fila nueva; las horas que le propongas se aplican al presupuesto solo cuando se apruebe la solicitud. El "libre" cuenta sus horas en todos los proyectos sobre 40 h (ajustadas por su capacidad).</div>
+    </div>`;
+  updateSugerenciasAviso();
+}
+
+function updateSugerenciasAviso() {
+  const aviso = document.getElementById('sugAviso');
+  const inner = document.getElementById('sugInner');
+  if (!aviso || !inner) return;
+  const sobre = {};
+  document.querySelectorAll('#modTable .rf-free.neg').forEach(el => { sobre[el.dataset.freeP] = (sobre[el.dataset.freeP] || 0) + 1; });
+  const nombres = Object.keys(sobre);
+  inner.classList.toggle('warn', nombres.length > 0);
+  aviso.innerHTML = nombres.length
+    ? `⚠️ <b>Sin capacidad suficiente:</b> ${nombres.map(n => `${n} (${sobre[n]} sem)`).join(', ')}. Considera repartir horas con alguien más.`
+    : '<span style="color:#166534">✓ Con lo propuesto, nadie del equipo supera su capacidad.</span>';
+}
+
+function agregarPersonaExtra(p) {
+  if (!p) return;
+  personasExtraRf.add(p);
+  rerenderConservandoInputs();
+}
+function quitarPersonaExtra(p) {
+  personasExtraRf.delete(p);
+  rerenderConservandoInputs();
 }
 
 // ── Semana extra ────────────────────────────────────────────────────────────
@@ -762,6 +896,7 @@ async function applyHorasToDashboard(horasMap, proyecto) {
       updateData.push({ range: `${SHEET_DATA}!${colToLetter(presCol)}${existing._row}`, values: [[horas]] });
       if (tsKey) updateData.push({ range: `${SHEET_DATA}!${colToLetter(dataColIdx[tsKey])}${existing._row}`, values: [[now]] });
     } else {
+      if (!horas) return; // persona sugerida sin horas: no crear fila vacía
       const row = new Array(dataHeaders.length).fill('');
       row[dataColIdx['semana']] = semana;
       if (anioCol !== undefined) row[anioCol] = año;

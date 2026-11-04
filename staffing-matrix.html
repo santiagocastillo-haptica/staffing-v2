@@ -307,6 +307,9 @@
         <div class="clasico-toolbar-left">
           <div class="update-notice" id="clasicoUpdateNotice">Cargando datos…</div>
           <select id="periodoClasico" class="periodo-select" onchange="onPeriodoClasico(this.value)" title="Periodo a mostrar"></select>
+          <input id="filtroProyectoClasico" class="periodo-select" style="min-width:200px" list="listaProyectosClasico" placeholder="Filtrar proyecto… (vacío = todos)" oninput="renderMatrixClasico()" title="Muestra solo las personas con ese proyecto; el % de carga de cada persona sigue incluyendo todos sus proyectos">
+          <datalist id="listaProyectosClasico"></datalist>
+          <button class="btn-secondary" style="padding:6px 10px" onclick="document.getElementById('filtroProyectoClasico').value='';renderMatrixClasico()" title="Quitar filtro">✕</button>
         </div>
         <div style="display:flex;gap:8px"><button class="btn-secondary" id="btnToggleInactivosClasico" onclick="toggleHideInactivosClasico()">👤 Ocultar personas inactivas</button><button class="btn-secondary" id="btnToggleFinishedClasico" onclick="toggleHideFinishedClasico()">👁 Ocultar finalizados</button></div>
       </div>
@@ -1195,13 +1198,29 @@ function renderMatrixClasico() {
   thead += '</tr>';
   thead += '</thead>';
 
+  // Lista de proyectos para el filtro (autocompletar)
+  const dl = document.getElementById('listaProyectosClasico');
+  if (dl && !dl.options.length) {
+    const todos = new Set();
+    Object.values(matrixClasico).forEach(m => Object.keys(m).forEach(p => { if (p !== '—') todos.add(p); }));
+    dl.innerHTML = sortProjects([...todos]).map(p => `<option value="${escAttr(p)}">`).join('');
+  }
+  const fProy = ((document.getElementById('filtroProyectoClasico') || {}).value || '').trim().toLowerCase();
+  const matchProy = p => p.toLowerCase().includes(fProy);
+
   let colaboradores = Object.keys(matrixClasico).sort();
   if (hideInactivosClasico) colaboradores = colaboradores.filter(col => !personasInactivasClasico.has(col));
   let tbody = '<tbody>';
 
   colaboradores.forEach(col => {
     let proyectos = sortProjects(Object.keys(matrixClasico[col]));
-    if (hideFinishedClasico) {
+    if (fProy) {
+      // Con filtro: solo proyectos que coinciden y en los que la persona tiene horas en el periodo
+      proyectos = proyectos.filter(proy => matchProy(proy) && weekRangeClasico.some(w => {
+        const c = matrixClasico[col][proy][w.key]; return c && c.hours > 0;
+      }));
+      if (!proyectos.length) return;
+    } else if (hideFinishedClasico) {
       proyectos = proyectos.filter(proy => !shouldHideProjectClasico(col, proy));
       if (!proyectos.length) return;
     }

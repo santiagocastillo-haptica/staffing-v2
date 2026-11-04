@@ -101,6 +101,8 @@
     .row-project td.col-desv { border-left: 2px solid #003237; }
     .row-project:hover td { background: #f8fbfc; }
     .row-project:hover td.col-name, .row-project:hover td.col-desv { background: #f8fbfc; }
+    .row-total td { background: #eef6f4; border-top: 2px solid #003237; font-weight: 700; color: #003237; text-align: center; font-size: 12px; padding: 7px 4px; }
+    .row-total td.col-name { text-align: left; }
     .row-add td { background: #fff; padding: 4px; border-bottom: 2px solid #eef2f4; }
     .btn-add-row {
       background: none; border: none; cursor: pointer;
@@ -201,6 +203,18 @@
             <option value="all">Todas las semanas futuras</option>
           </select>
         </div>
+        <div class="view-range">
+          <label for="weeksBackSelect">Semanas atrás</label>
+          <select id="weeksBackSelect" onchange="onWeeksBackChange(this.value)">
+            <option value="1">1 (la anterior)</option>
+            <option value="2">2</option>
+            <option value="4">4</option>
+            <option value="8">8</option>
+            <option value="13">13 (un trimestre)</option>
+            <option value="all">Todas</option>
+          </select>
+        </div>
+        <span class="changes-badge" id="sumBadge" style="display:none;background:#e6f6ee;color:#166534;border-color:#86d3a6"></span>
       </div>
       <div style="display:flex;gap:14px;align-items:center">
         <label class="hide-closed-toggle">
@@ -264,6 +278,17 @@ function getViewRange() {
 }
 function onViewRangeChange(mode) {
   localStorage.setItem(VIEW_RANGE_KEY, mode);
+  buildWeekRange();
+  renderMatrix();
+}
+
+const WEEKS_BACK_KEY = 'timeReportWeeksBack';
+function getWeeksBack() {
+  const v = localStorage.getItem(WEEKS_BACK_KEY) || '1';
+  return v === 'all' ? 'all' : (Number(v) || 1);
+}
+function onWeeksBackChange(v) {
+  localStorage.setItem(WEEKS_BACK_KEY, v);
   buildWeekRange();
   renderMatrix();
 }
@@ -391,7 +416,8 @@ function buildWeekRange() {
   const curMonday = getWeekMonday(cur.semana, cur.año).getTime();
   // La semana pasada se mantiene visible (para poder cerrar su registro los
   // primeros días de la semana siguiente) — nunca se muestra nada anterior a eso.
-  const startMonday = curMonday - 7 * 86400000;
+  const back = getWeeksBack();
+  const startMonday = back === 'all' ? -Infinity : curMonday - back * 7 * 86400000;
   let range = full.filter(w => w.monday >= startMonday);
 
   const mode = getViewRange();
@@ -526,6 +552,12 @@ function renderMatrix() {
     tbody += '</tr>';
   });
 
+  tbody += `<tr class="row-total">
+    <td class="col-name"><b>Total reportado</b></td>
+    ${weekRange.map(w => `<td class="total-cell" id="tot-${w.key}"></td>`).join('')}
+    <td class="col-desv total-cell" id="tot-all"></td>
+  </tr>`;
+
   tbody += `<tr class="row-add">
     <td class="col-name"><button class="btn-add-row" onclick="openModal()">＋ agregar proyecto</button></td>
     ${weekRange.map(() => '<td></td>').join('')}
@@ -538,6 +570,34 @@ function renderMatrix() {
     `<div class="matrix-wrap"><table class="matrix">${thead}${tbody}</table></div>`;
 
   renderPresupGuide(monthGroups, isCurWeek, proyectos);
+  updateTotals();
+}
+
+// Suma en vivo de lo reportado por semana (incluye cambios sin guardar)
+function visibleProyectos() {
+  let proyectos = Object.keys(proyectoData);
+  if (getHideClosed()) proyectos = proyectos.filter(p => estadoDe(p) !== 'Cerrado');
+  return proyectos;
+}
+function updateTotals() {
+  const proyectos = visibleProyectos();
+  let grand = 0;
+  weekRange.forEach(w => {
+    const sum = proyectos.reduce((s, p) => s + effectiveCell(p, w.key).ejec, 0);
+    grand += sum;
+    const el = document.getElementById('tot-' + w.key);
+    if (el) el.textContent = sum ? fmt(sum) : '';
+  });
+  const g = document.getElementById('tot-all');
+  if (g) g.textContent = grand ? fmt(grand) : '';
+  // Sumador de lo que se ha digitado y aún no se guarda
+  let dirtyHours = 0, dirtyCells = 0;
+  Object.values(dirtyMatrix).forEach(m => Object.values(m).forEach(c => { dirtyHours += c.hours; dirtyCells++; }));
+  const b = document.getElementById('sumBadge');
+  if (b) {
+    b.textContent = `Σ sin guardar: ${fmt(dirtyHours)} h`;
+    b.style.display = dirtyCells > 0 ? 'inline-block' : 'none';
+  }
 }
 
 // ── Guía de horas presupuestadas (misma estructura, solo lectura) ─────────
@@ -560,6 +620,10 @@ function renderPresupGuide(monthGroups, isCurWeek, proyectos) {
     tbody += `<td class="col-desv">${fmt(totalPresup)}</td>`;
     tbody += '</tr>';
   });
+  tbody += `<tr class="row-total"><td class="col-name"><b>Total presupuestado</b></td>${weekRange.map(w => {
+    const s = proyectos.reduce((a, p) => a + effectiveCell(p, w.key).presup, 0);
+    return `<td class="total-cell">${s ? fmt(s) : ''}</td>`;
+  }).join('')}<td class="col-desv total-cell">${fmt(proyectos.reduce((a, p) => a + weekRange.reduce((x, w) => x + effectiveCell(p, w.key).presup, 0), 0))}</td></tr>`;
   tbody += '</tbody>';
 
   container.innerHTML = `
@@ -590,6 +654,7 @@ function onCellChange(input) {
 
   refreshDesviacion(proy);
   updateDirtyUI();
+  updateTotals();
 }
 
 function refreshDesviacion(proy) {
@@ -720,6 +785,7 @@ function showToast(msg, type = '') {
 }
 
 document.getElementById('viewRangeSelect').value = getViewRange();
+document.getElementById('weeksBackSelect').value = String(getWeeksBack());
 document.getElementById('chkHideClosed').checked = getHideClosed();
 
 HapticaAuth.init({
