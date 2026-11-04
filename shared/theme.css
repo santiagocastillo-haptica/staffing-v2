@@ -153,3 +153,11 @@ body {
   .filters { flex-direction: column; }
   .filter-group select, .filter-group input { min-width: 100%; }
 }
+
+/* Insignia de solicitudes pendientes en la navegación */
+.hap-nav-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px;
+  border-radius: 99px; background: #FA4616; color: #fff;
+  font-size: 11px; font-weight: 700; line-height: 1; vertical-align: middle;
+}

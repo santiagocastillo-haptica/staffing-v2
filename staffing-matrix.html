@@ -77,6 +77,26 @@
     @media (max-width: 700px) { .kpi-row { grid-template-columns: 1fr; } }
 
     /* ── Tabs de vista principal (Dashboard / Vista Clásica) ────────────── */
+    .periodo-select { padding: 7px 28px 7px 11px; border: 1.5px solid #d4dfe2; border-radius: 7px; font-family: inherit; font-size: 12px; font-weight: 600; color: #1a2e35; background: #fff; }
+    .periodo-select:focus { outline: none; border-color: #003237; }
+    .gantt-legend { display:flex; gap:16px; flex-wrap:wrap; align-items:center; font-size:11px; color:#1a2e35; margin:0 0 10px; }
+    .gantt-sw { display:inline-block; width:14px; height:12px; border-radius:2px; margin-right:5px; vertical-align:-2px; }
+    .gantt-gap-sw { background: repeating-linear-gradient(45deg,#eef2f3,#eef2f3 3px,#d4dfe2 3px,#d4dfe2 5px); }
+    .gantt-wrap { overflow:auto; max-height: calc(100vh - 260px); border:1px solid #d4dfe2; border-radius:8px; background:#fff; }
+    .gantt-table { border-collapse:separate; border-spacing:0; font-size:11px; }
+    .gantt-table th, .gantt-table td { padding:0; }
+    .gantt-table thead th { position:sticky; z-index:3; background:#003237; color:#fff; font-weight:600; }
+    .gantt-table .g-month { top:0; height:22px; text-align:center; border-left:1px solid rgba(255,255,255,.25); }
+    .gantt-table .g-week { top:22px; height:34px; min-width:26px; width:26px; font-size:9px; line-height:1.1; text-align:center; font-weight:500; }
+    .gantt-table .g-week.cur { background:#FA4616; }
+    .gantt-table .g-name { position:sticky; left:0; z-index:2; background:#fff; min-width:190px; max-width:190px; padding:0 10px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-bottom:1px solid #eef2f3; font-weight:600; color:#1a2e35; }
+    .gantt-table thead .g-name { z-index:5; background:#003237; color:#fff; }
+    .gantt-table .g-meta { min-width:62px; padding:0 6px; text-align:center; border-bottom:1px solid #eef2f3; color:#1a2e35; white-space:nowrap; background:#fff; }
+    .gantt-table thead .g-meta { background:#003237; color:#fff; }
+    .gantt-table td.g-cell { height:26px; min-width:26px; width:26px; border-bottom:1px solid #eef2f3; border-right:1px solid #f4f7f8; font-size:9px; text-align:center; color:#1a2e35; }
+    .gantt-table td.g-cur { box-shadow: inset 2px 0 0 #003237, inset -2px 0 0 #003237; }
+    .gantt-table td.g-gap { background: repeating-linear-gradient(45deg,#eef2f3,#eef2f3 3px,#d4dfe2 3px,#d4dfe2 5px); }
+    .gantt-table tr.g-closed .g-name { color:#8a9ea3; font-weight:500; }
     .view-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
     .view-tab-btn {
       padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer;
@@ -176,6 +196,7 @@
     <div class="view-tabs">
       <button class="view-tab-btn active" data-view="dashboard" onclick="setMainView('dashboard')">📊 Dashboard</button>
       <button class="view-tab-btn" data-view="clasico" onclick="setMainView('clasico')">🗂 Vista Clásica</button>
+      <button class="view-tab-btn" data-view="gantt" onclick="setMainView('gantt')">📅 Gantt</button>
     </div>
 
     <div id="dashboardView">
@@ -272,7 +293,10 @@
     </div>
 
     <div id="desgloseCard" style="display:none">
-      <h2 style="font-size:15px;font-weight:600;color:#1a2e35;margin-bottom:4px">Desglose por equipo y semana</h2>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <h2 style="font-size:15px;font-weight:600;color:#1a2e35;margin-bottom:4px">Desglose por equipo y semana</h2>
+        <select id="periodoDesglose" class="periodo-select" onchange="onPeriodoDesglose(this.value)" title="Periodo a mostrar"></select>
+      </div>
       <div class="chart-sub" style="margin-bottom:20px">Horas presupuestadas por persona · una tabla por proyecto</div>
       <div id="desgloseContainer"></div>
     </div>
@@ -282,12 +306,37 @@
       <div class="clasico-toolbar">
         <div class="clasico-toolbar-left">
           <div class="update-notice" id="clasicoUpdateNotice">Cargando datos…</div>
+          <select id="periodoClasico" class="periodo-select" onchange="onPeriodoClasico(this.value)" title="Periodo a mostrar"></select>
         </div>
         <div style="display:flex;gap:8px"><button class="btn-secondary" id="btnToggleInactivosClasico" onclick="toggleHideInactivosClasico()">👤 Ocultar personas inactivas</button><button class="btn-secondary" id="btnToggleFinishedClasico" onclick="toggleHideFinishedClasico()">👁 Ocultar finalizados</button></div>
       </div>
       <div id="clasicoMatrixContainer">
         <div class="state-msg"><div class="spinner"></div>Cargando…</div>
       </div>
+    </div>
+
+    <div id="ganttView" style="display:none">
+      <div class="clasico-toolbar">
+        <div class="clasico-toolbar-left" style="gap:8px;flex-wrap:wrap">
+          <select id="ganttPeriodo" class="periodo-select" onchange="onGanttPeriodo(this.value)" title="Periodo a mostrar"></select>
+          <select id="ganttOrden" class="periodo-select" onchange="onGanttOrden(this.value)" title="Ordenar proyectos">
+            <option value="inicio">Orden: inicio</option>
+            <option value="fin">Orden: fin</option>
+            <option value="total">Orden: horas totales</option>
+            <option value="nombre">Orden: nombre</option>
+          </select>
+          <input id="ganttBuscar" class="periodo-select" style="min-width:170px" placeholder="Buscar proyecto…" oninput="renderGantt()">
+        </div>
+        <div style="display:flex;gap:8px"><button class="btn-secondary" id="btnToggleFinishedGantt" onclick="toggleHideFinishedGantt()">👁 Ocultar finalizados</button></div>
+      </div>
+      <div class="gantt-legend">
+        <span><i class="gantt-sw" style="background:rgba(250,70,22,.2)"></i>pocas horas</span>
+        <span><i class="gantt-sw" style="background:rgba(250,70,22,.9)"></i>pico del proyecto</span>
+        <span><i class="gantt-sw gantt-gap-sw"></i>hueco (proyecto apagado entre fases)</span>
+        <span><i class="gantt-sw" style="background:#fff;border:2px solid #003237"></i>semana actual</span>
+        <span style="color:#6b8a91">El color se normaliza por proyecto: más intenso = más horas presupuestadas esa semana (suma de todo el equipo).</span>
+      </div>
+      <div id="ganttContainer"><div class="state-msg"><div class="spinner"></div>Cargando…</div></div>
     </div>
 
   </div>
@@ -755,7 +804,25 @@ function computeEquipoMatrixDesglose(proyecto) {
   return m;
 }
 
+const PERIODO_DESGLOSE_KEY = 'staffingPeriodoDesglose';
+function getPeriodoDesglose() { try { return localStorage.getItem(PERIODO_DESGLOSE_KEY) || 'ventana'; } catch (e) { return 'ventana'; } }
+function populatePeriodoDesglose() {
+  const sel = document.getElementById('periodoDesglose');
+  if (sel.options.length) return;
+  sel.innerHTML = '<option value="ventana">Ventana actual (−2 / +8 semanas)</option><option value="all">Todo (ene 2026 → jul 2027)</option>' +
+    '<optgroup label="Un trimestre completo">' + quarterOptionsHtml() + '</optgroup>';
+  sel.value = getPeriodoDesglose();
+  if (sel.value !== getPeriodoDesglose()) sel.value = 'ventana';
+}
+function onPeriodoDesglose(v) {
+  try { localStorage.setItem(PERIODO_DESGLOSE_KEY, v); } catch (e) {}
+  renderDesglose();
+}
+
 function weeksForDesglose() {
+  const per = getPeriodoDesglose();
+  if (per.startsWith('q:')) return weeksInQuarter(per.slice(2));
+  if (per === 'all') return getFullWeekRange();
   const cur = getCurrentIsoYearWeek();
   const full = getFullWeekRange();
   const curIdx = full.findIndex(w => w.semana === cur.semana && w.año === cur.año);
@@ -816,6 +883,7 @@ function renderDesgloseTabla(proyecto) {
 }
 
 function renderDesglose() {
+  populatePeriodoDesglose();
   const card = document.getElementById('desgloseCard');
   const container = document.getElementById('desgloseContainer');
   const proyectoFiltro = document.getElementById('filterProyecto').value;
@@ -843,8 +911,146 @@ function setMainView(view) {
   currentMainView = view;
   document.getElementById('dashboardView').style.display = view === 'dashboard' ? '' : 'none';
   document.getElementById('clasicoView').style.display = view === 'clasico' ? '' : 'none';
+  document.getElementById('ganttView').style.display = view === 'gantt' ? '' : 'none';
   document.querySelectorAll('.view-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   if (view === 'clasico' && !clasicoLoaded) loadClasicoView();
+  if (view === 'gantt') loadGanttView();
+}
+
+// ── Gantt de proyectos ──────────────────────────────────────────────────────
+// Una fila por proyecto; cada columna es una semana coloreada según las horas
+// presupuestadas ese proyecto-semana (suma de todo el equipo), normalizadas por
+// el pico del propio proyecto. Sirve para ver cuándo enciende, cuándo apaga y
+// si tiene huecos entre fases.
+let ganttLoaded = false;
+let hideFinishedGantt = true;
+const GANTT_PERIODO_KEY = 'staffingGanttPeriodo';
+const GANTT_ORDEN_KEY = 'staffingGanttOrden';
+const MESES_CORTO = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+function lsGet(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+async function loadGanttView() {
+  if (!ganttLoaded) {
+    ganttLoaded = true;
+    const selP = document.getElementById('ganttPeriodo');
+    selP.innerHTML = '<option value="all">Todo (ene 2026 → jul 2027)</option><optgroup label="Un trimestre completo">' + quarterOptionsHtml() + '</optgroup>';
+    selP.value = lsGet(GANTT_PERIODO_KEY, 'all');
+    if (selP.value !== lsGet(GANTT_PERIODO_KEY, 'all')) selP.value = 'all';
+    document.getElementById('ganttOrden').value = lsGet(GANTT_ORDEN_KEY, 'inicio');
+    document.getElementById('btnToggleFinishedGantt').textContent = hideFinishedGantt ? '👁 Ver finalizados' : '👁 Ocultar finalizados';
+    if (!Object.keys(proyectoEstadoClasico).length) { try { await loadProyectosCatalogClasico(); } catch (e) {} }
+  }
+  renderGantt();
+}
+function onGanttPeriodo(v) { lsSet(GANTT_PERIODO_KEY, v); renderGantt(); }
+function onGanttOrden(v) { lsSet(GANTT_ORDEN_KEY, v); renderGantt(); }
+function toggleHideFinishedGantt() {
+  hideFinishedGantt = !hideFinishedGantt;
+  document.getElementById('btnToggleFinishedGantt').textContent = hideFinishedGantt ? '👁 Ver finalizados' : '👁 Ocultar finalizados';
+  renderGantt();
+}
+
+function buildGanttProjects() {
+  // proyecto → { weeks: {key: horas}, personas: Set }
+  const proj = {};
+  allData.forEach(r => {
+    const p = r.proyecto || '—';
+    const h = r.horaspresupuestadas || 0;
+    if (h <= 0) return;
+    const k = semanaAnioKey(r.semana, r.año);
+    if (!proj[p]) proj[p] = { nombre: p, weeks: {} };
+    proj[p].weeks[k] = (proj[p].weeks[k] || 0) + h;
+  });
+  const all = getFullWeekRange();
+  const idx = {}; all.forEach((w, i) => idx[w.key] = i);
+  Object.values(proj).forEach(p => {
+    const ks = Object.keys(p.weeks).filter(k => idx[k] !== undefined).sort((a, b) => idx[a] - idx[b]);
+    p.total = ks.reduce((t, k) => t + p.weeks[k], 0);
+    p.pico = ks.reduce((m, k) => Math.max(m, p.weeks[k]), 0);
+    p.iIni = ks.length ? idx[ks[0]] : -1;
+    p.iFin = ks.length ? idx[ks[ks.length - 1]] : -1;
+    p.ini = ks.length ? all[p.iIni] : null;
+    p.fin = ks.length ? all[p.iFin] : null;
+    p.cerrado = proyectoEstadoClasico[p.nombre] === 'Cerrado';
+  });
+  return Object.values(proj).filter(p => p.iIni >= 0);
+}
+
+function ganttFechaCorta(w) {
+  const d = new Date(w.monday);
+  return d.getDate() + ' ' + MESES_CORTO[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2);
+}
+
+function renderGantt() {
+  const cont = document.getElementById('ganttContainer');
+  if (!allData.length) { cont.innerHTML = '<div class="state-msg">Sin datos todavía.</div>'; return; }
+  const per = lsGet(GANTT_PERIODO_KEY, 'all');
+  const weeks = per.startsWith('q:') ? weeksInQuarter(per.slice(2)) : getFullWeekRange();
+  const cur = getCurrentIsoYearWeek();
+  const curKey = semanaAnioKey(cur.semana, cur.año);
+  const orden = lsGet(GANTT_ORDEN_KEY, 'inicio');
+  const q = (document.getElementById('ganttBuscar').value || '').trim().toLowerCase();
+
+  let projs = buildGanttProjects();
+  if (hideFinishedGantt) projs = projs.filter(p => !p.cerrado);
+  if (q) projs = projs.filter(p => p.nombre.toLowerCase().includes(q));
+  // En un trimestre solo interesan los proyectos con horas dentro de él
+  if (per.startsWith('q:')) projs = projs.filter(p => weeks.some(w => p.weeks[w.key] > 0));
+  const cmp = {
+    inicio: (a, b) => a.iIni - b.iIni || a.nombre.localeCompare(b.nombre),
+    fin: (a, b) => a.iFin - b.iFin || a.nombre.localeCompare(b.nombre),
+    total: (a, b) => b.total - a.total,
+    nombre: (a, b) => a.nombre.localeCompare(b.nombre),
+  }[orden];
+  projs.sort(cmp);
+  if (!projs.length) { cont.innerHTML = '<div class="state-msg">No hay proyectos con horas en este periodo.</div>'; return; }
+
+  // Encabezado de meses
+  let monthRow = '', i = 0;
+  while (i < weeks.length) {
+    const m = weekMonthYear(weeks[i].semana, weeks[i].año);
+    let j = i; while (j < weeks.length) { const mm = weekMonthYear(weeks[j].semana, weeks[j].año); if (mm.month !== m.month || mm.year !== m.year) break; j++; }
+    monthRow += `<th class="g-month" colspan="${j - i}">${MESES_CORTO[m.month]} ${String(m.year).slice(2)}</th>`;
+    i = j;
+  }
+  const metaH = ['Inicio', 'Fin', 'Semanas', 'Pico h', 'Total h'];
+  let head = `<thead><tr><th class="g-name" rowspan="2" style="top:0">Proyecto (${projs.length})</th>${metaH.map(h => `<th class="g-meta" rowspan="2" style="top:0">${h}</th>`).join('')}${monthRow}</tr><tr>`;
+  weeks.forEach(w => {
+    head += `<th class="g-week${w.key === curKey ? ' cur' : ''}" title="${escAttr(weekDateLabel(w.semana, w.año))}">S${w.semana}<br>${new Date(w.monday).getDate()}</th>`;
+  });
+  head += '</tr></thead>';
+
+  const body = projs.map(p => {
+    const nAct = Object.keys(p.weeks).length;
+    const dur = p.iFin - p.iIni + 1;
+    const huecos = dur - nAct;
+    let cells = '';
+    weeks.forEach(w => {
+      const h = p.weeks[w.key] || 0;
+      const idxW = getFullWeekRange().findIndex(x => x.key === w.key);
+      const dentro = idxW >= p.iIni && idxW <= p.iFin;
+      const cls = ['g-cell'];
+      let style = '', txt = '';
+      if (h > 0) {
+        const a = 0.2 + 0.7 * (h / p.pico);
+        style = `background:rgba(250,70,22,${a.toFixed(2)});${a > 0.6 ? 'color:#fff;' : ''}`;
+        txt = h >= 100 ? Math.round(h) : (Number.isInteger(h) ? h : h.toFixed(0));
+      } else if (dentro) cls.push('g-gap');
+      if (w.key === curKey) cls.push('g-cur');
+      cells += `<td class="${cls.join(' ')}" style="${style}" title="${escAttr(p.nombre + ' · ' + weekDateLabel(w.semana, w.año) + ': ' + (h ? fmt(h) + ' h' : (dentro ? 'sin horas (hueco)' : 'sin horas')))}">${txt}</td>`;
+    });
+    return `<tr class="${p.cerrado ? 'g-closed' : ''}"><td class="g-name" title="${escAttr(p.nombre + (p.cerrado ? ' (finalizado)' : ''))}">${p.nombre}</td>
+      <td class="g-meta">${ganttFechaCorta(p.ini)}</td><td class="g-meta">${ganttFechaCorta(p.fin)}</td>
+      <td class="g-meta" title="${huecos > 0 ? huecos + ' semanas apagado entre inicio y fin' : 'sin huecos'}">${dur}${huecos > 0 ? ' <span style="color:#FA4616">(−' + huecos + ')</span>' : ''}</td>
+      <td class="g-meta">${fmt(p.pico)}</td><td class="g-meta">${fmt(p.total)}</td>${cells}</tr>`;
+  }).join('');
+
+  cont.innerHTML = `<div class="gantt-wrap"><table class="gantt-table">${head}<tbody>${body}</tbody></table></div>`;
+  // Los encabezados de columnas meta/nombre quedan fijos a la izquierda al hacer scroll horizontal
+  const wrap = cont.querySelector('.gantt-wrap');
+  const cur$ = cont.querySelector('.g-week.cur');
+  if (cur$) wrap.scrollLeft = Math.max(0, cur$.offsetLeft - 480);
 }
 
 async function loadClasicoView() {
@@ -855,7 +1061,8 @@ async function loadClasicoView() {
     const [todasLasPersonas, estadoPersonas] = await Promise.all([fetchAllPersonas(), fetchPersonasInactivas(), loadProyectosCatalogClasico()]);
     personasInactivasClasico = estadoPersonas.inactivas;
     buildMatrixClasico(todasLasPersonas);
-    weekRangeClasico = getFullWeekRange();
+    populatePeriodoClasico();
+    weekRangeClasico = weeksParaPeriodoClasico();
     renderMatrixClasico();
     document.getElementById('clasicoUpdateNotice').textContent = document.getElementById('updateNotice').textContent;
   } catch (err) {
@@ -913,6 +1120,34 @@ function shouldHideProjectClasico(col, proy) {
 function toggleHideFinishedClasico() {
   hideFinishedClasico = !hideFinishedClasico;
   document.getElementById('btnToggleFinishedClasico').textContent = hideFinishedClasico ? '👁 Ver finalizados' : '👁 Ocultar finalizados';
+  renderMatrixClasico();
+}
+
+// ── Periodo (trimestres) de la Vista Clásica ────────────────────────────────
+const PERIODO_CLASICO_KEY = 'staffingPeriodoClasico';
+function getPeriodoClasico() { try { return localStorage.getItem(PERIODO_CLASICO_KEY) || 'all'; } catch (e) { return 'all'; } }
+function populatePeriodoClasico() {
+  const sel = document.getElementById('periodoClasico');
+  sel.innerHTML = '<option value="all">Todo (ene 2026 → jul 2027)</option><option value="mes">Mes actual en adelante</option>' +
+    '<optgroup label="Un trimestre completo">' + quarterOptionsHtml() + '</optgroup>';
+  sel.value = getPeriodoClasico();
+  if (sel.value !== getPeriodoClasico()) sel.value = 'all';
+}
+function weeksParaPeriodoClasico() {
+  const v = getPeriodoClasico();
+  if (v.startsWith('q:')) return weeksInQuarter(v.slice(2));
+  if (v === 'mes') {
+    const now = new Date();
+    const ini = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const cur = getCurrentIsoYearWeek();
+    const start = Math.min(ini, getWeekMonday(cur.semana, cur.año).getTime());
+    return getFullWeekRange().filter(w => w.monday >= start);
+  }
+  return getFullWeekRange();
+}
+function onPeriodoClasico(v) {
+  try { localStorage.setItem(PERIODO_CLASICO_KEY, v); } catch (e) {}
+  weekRangeClasico = weeksParaPeriodoClasico();
   renderMatrixClasico();
 }
 

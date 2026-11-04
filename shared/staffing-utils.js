@@ -166,6 +166,28 @@ function semanaAnioLabelConFecha(semana, año) {
 const WEEK_RANGE_START = new Date(2026, 0, 1);
 const WEEK_RANGE_END   = new Date(2027, 6, 31);
 
+// ── Trimestres dentro del rango fijo de la app ────────────────────────────
+// Una semana pertenece al trimestre de su jueves (criterio ISO: la semana 1-2026 cae en Q1).
+// Se omiten trimestres con menos de 4 semanas (bordes del rango).
+function quarterKeyOfWeek(w) {
+  const th = getWeekMonday(w.semana, w.año); th.setDate(th.getDate() + 3); // jueves (criterio ISO)
+  return `${th.getFullYear()}-${Math.floor(th.getMonth() / 3) + 1}`;
+}
+function listQuarters() {
+  const cuenta = {};
+  getFullWeekRange().forEach(w => { const k = quarterKeyOfWeek(w); cuenta[k] = (cuenta[k] || 0) + 1; });
+  return Object.keys(cuenta).filter(k => cuenta[k] >= 4).map(k => {
+    const [año, q] = k.split('-').map(Number);
+    return { key: k, año, q, label: `Q${q} ${año}` };
+  });
+}
+function weeksInQuarter(key) {
+  return getFullWeekRange().filter(w => quarterKeyOfWeek(w) === key);
+}
+function quarterOptionsHtml() {
+  return listQuarters().map(q => `<option value="q:${q.key}">${q.label}${q.key === quarterKeyOfWeek(getFullWeekRange().find(w => w.semana === getCurrentIsoYearWeek().semana && w.año === getCurrentIsoYearWeek().año) || {semana:0,año:0}) ? ' (actual)' : ''}</option>`).join('');
+}
+
 function getFullWeekRange() {
   // Ojo: la semana 1 de un año arranca (por definición ISO) en el lunes que
   // contiene el 4 de enero, que puede caer en diciembre del año anterior.

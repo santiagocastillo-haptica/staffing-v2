@@ -7,6 +7,19 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="shared/theme.css" />
   <style>
+    .seg-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .seg-table th { text-align:left; background:#003237; color:#fff; padding:7px 10px; font-weight:600; position:sticky; top:0; }
+    .seg-table td { padding:7px 10px; border-bottom:1px solid #eef2f3; color:#1a2e35; }
+    .seg-table tr.seg-row { cursor:pointer; }
+    .seg-table tr.seg-row:hover td { background:#f4f7f8; }
+    .seg-pill { display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px; font-weight:700; }
+    .seg-pill.pend { background:#fff3ee; color:#9a3412; border:1px solid #FA4616; }
+    .seg-pill.apro { background:#e6f6ee; color:#166534; border:1px solid #86d3a6; }
+    .seg-pill.sup  { background:#eef2f3; color:#5b7379; border:1px solid #d4dfe2; }
+    .seg-turno-mio { color:#FA4616; font-weight:700; }
+    .seg-filters { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0; }
+    .seg-filters select, .seg-filters input { padding:6px 10px; border:1.5px solid #d4dfe2; border-radius:7px; font-family:inherit; font-size:12px; }
+    .seg-wrap { max-height:340px; overflow:auto; border:1px solid #d4dfe2; border-radius:8px; }
     .pending-card {
       background: #fff3ee; border: 1px solid #fdd6bb; border-radius: 12px;
       padding: 14px 20px; margin-bottom: 20px;
@@ -104,6 +117,26 @@
     <div class="pending-card" id="pendingCard" style="display:none">
       <h3>Solicitudes donde te toca actuar</h3>
       <div id="pendingList"></div>
+    </div>
+
+    <div class="section-card" id="segCard" style="display:none">
+      <h2>Seguimiento de solicitudes</h2>
+      <div class="section-sub">Estado de la última solicitud de cada proyecto, quién la propuso y a quién le toca responder.</div>
+      <div class="seg-filters">
+        <select id="segEstado" onchange="renderSeguimiento()">
+          <option value="">Todos los estados</option>
+          <option value="Pendiente">Pendiente</option>
+          <option value="Aprobada">Aprobada</option>
+          <option value="Superada">Superada</option>
+        </select>
+        <select id="segTurno" onchange="renderSeguimiento()">
+          <option value="">Todos los turnos</option>
+          <option value="mio">Me toca a mí</option>
+          <option value="otro">Esperando a la otra parte</option>
+        </select>
+        <input id="segBuscar" placeholder="Buscar proyecto…" oninput="renderSeguimiento()">
+      </div>
+      <div class="seg-wrap" id="segTabla"></div>
     </div>
 
     <div class="section-card">
@@ -416,6 +449,8 @@ function activeThreadFor(proyecto) {
 
 // ── Panel de pendientes ─────────────────────────────────────────────────────
 function renderPendingPanel() {
+  renderSeguimiento();
+  refreshNavBadgeFromState();
   const proyectos = [...new Set(solicitudes.map(s => s.proyecto))];
   const mine = proyectos.filter(p => {
     const t = activeThreadFor(p);
@@ -429,6 +464,53 @@ function renderPendingPanel() {
   document.getElementById('pendingList').innerHTML = mine.map(p =>
     `<span class="pending-item" onclick="selectProyecto('${escAttr(p)}')">⏳ ${p}</span>`
   ).join('');
+}
+
+// ── Seguimiento de solicitudes + insignia de la navegación ──────────────────
+function pendingForMe() {
+  return [...new Set(solicitudes.map(s => s.proyecto))].filter(p => {
+    const t = activeThreadFor(p);
+    return t && mySides.includes(t.proponeLado === 'Equipos' ? 'Ops' : 'Equipos');
+  }).length;
+}
+
+function renderSeguimiento() {
+  const card = document.getElementById('segCard');
+  if (!solicitudes.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  const fEstado = document.getElementById('segEstado').value;
+  const fTurno = document.getElementById('segTurno').value;
+  const q = document.getElementById('segBuscar').value.trim().toLowerCase();
+  const proyectos = [...new Set(solicitudes.map(s => s.proyecto).filter(Boolean))];
+  let filas = proyectos.map(p => {
+    const l = latestForProject(p);
+    const turnos = solicitudes.filter(s => s.proyecto === p).length;
+    const pend = l.estado === 'Pendiente';
+    const siguiente = l.proponeLado === 'Equipos' ? 'Ops' : 'Equipos';
+    return { p, l, turnos, pend, siguiente, mio: pend && mySides.includes(siguiente) };
+  });
+  if (fEstado) filas = filas.filter(f => f.l.estado === fEstado);
+  if (fTurno === 'mio') filas = filas.filter(f => f.mio);
+  if (fTurno === 'otro') filas = filas.filter(f => f.pend && !f.mio);
+  if (q) filas = filas.filter(f => f.p.toLowerCase().includes(q));
+  // Primero las pendientes que me tocan, luego las demás pendientes, luego el histórico por fecha
+  filas.sort((a, b) => (b.mio - a.mio) || (b.pend - a.pend) || String(b.l.fecha).localeCompare(String(a.l.fecha)));
+  const pill = e => e === 'Pendiente' ? 'pend' : e === 'Aprobada' ? 'apro' : 'sup';
+  document.getElementById('segTabla').innerHTML = filas.length
+    ? `<table class="seg-table"><thead><tr><th>Proyecto</th><th>Estado</th><th>Turno</th><th>Propuso</th><th>Fecha</th><th>Le toca a</th></tr></thead><tbody>${filas.map(f => `
+      <tr class="seg-row" onclick="selectProyecto('${escAttr(f.p)}')">
+        <td><b>${f.p}</b></td>
+        <td><span class="seg-pill ${pill(f.l.estado)}">${f.l.estado || '—'}</span></td>
+        <td>${f.turnos}</td>
+        <td>${f.l.proponePersona || '—'} <span style="color:#6b8a91">(${f.l.proponeLado || '—'})</span></td>
+        <td>${String(f.l.fecha).slice(0, 10)}</td>
+        <td>${f.pend ? (f.mio ? '<span class="seg-turno-mio">Tú (' + f.siguiente + ')</span>' : f.siguiente) : '—'}</td>
+      </tr>`).join('')}</tbody></table>`
+    : '<div class="state-msg" style="padding:16px">No hay solicitudes con esos filtros.</div>';
+}
+
+function refreshNavBadgeFromState() {
+  if (typeof HapticaNav !== 'undefined' && HapticaNav.setPendingCount) HapticaNav.setPendingCount(mySession.rol, pendingForMe());
 }
 
 function selectProyecto(proyecto) {

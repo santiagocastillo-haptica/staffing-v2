@@ -224,13 +224,7 @@
         <span class="changes-badge" id="changesBadge"></span>
         <input type="text" id="filterPersonaEdit" list="filterPersonaOptions" placeholder="Todas las personas — escribe para buscar…" autocomplete="off" oninput="onFiltroPersonaChange(this.value)" />
         <datalist id="filterPersonaOptions"></datalist>
-        <select id="filterDesdeEdit" onchange="onDesdeChange(this.value)" title="Cuánto pasado mostrar en la matriz">
-          <option value="0">Desde: mes actual</option>
-          <option value="1">Desde: 1 mes atrás</option>
-          <option value="2">Desde: 2 meses atrás</option>
-          <option value="3">Desde: 3 meses atrás</option>
-          <option value="6">Desde: 6 meses atrás</option>
-          <option value="all">Desde: todo el histórico</option>
+        <select id="filterDesdeEdit" onchange="onDesdeChange(this.value)" title="Periodo a mostrar: desde el mes actual, meses anteriores o un trimestre completo">
         </select>
         <select id="filterProyectoEdit" onchange="onFiltroProyectoChange(this.value)">
           <option value="">— Todos los proyectos —</option>
@@ -494,9 +488,20 @@ function onDesdeChange(value) {
   buildWeekRange();
   renderMatrix();
 }
+function populateDesdeSelect() {
+  document.getElementById('filterDesdeEdit').innerHTML =
+    '<option value="0">Mes actual en adelante</option>' +
+    '<option value="1">Desde 1 mes atrás</option>' +
+    '<option value="2">Desde 2 meses atrás</option>' +
+    '<option value="3">Desde 3 meses atrás</option>' +
+    '<option value="6">Desde 6 meses atrás</option>' +
+    '<option value="all">Todo el histórico</option>' +
+    '<optgroup label="Un trimestre completo">' + quarterOptionsHtml() + '</optgroup>';
+}
 function buildWeekRange() {
   const desde = getDesde();
   if (desde === 'all') { weekRange = getFullWeekRange(); return; }
+  if (desde.startsWith('q:')) { weekRange = weeksInQuarter(desde.slice(2)); return; }
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth() - (Number(desde) || 0), 1).getTime();
   const cur = getCurrentIsoYearWeek();
@@ -1461,6 +1466,7 @@ function showToast(msg, type = '') {
   setTimeout(() => { el.className = 'toast'; }, 3500);
 }
 
+populateDesdeSelect();
 document.getElementById('filterDesdeEdit').value = getDesde();
 
 HapticaAuth.init({
