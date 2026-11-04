@@ -235,6 +235,7 @@ async function loadAll() {
 }
 
 async function loadDashboardData() {
+  await fetchPersonasRetiradas();
   const res = await gapi.client.sheets.spreadsheets.values.get({
     spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_DATA
   });
@@ -251,7 +252,7 @@ async function loadDashboardData() {
     obj.año = Number(obj.año) || (obj.semana ? inferAnioLegacy(obj.semana) : null);
     obj.horaspresupuestadas = Number(obj.horaspresupuestadas) || 0;
     return obj;
-  }).filter(r => r.semana && r.colaborador);
+  }).filter(r => r.semana && r.colaborador && !esRetirada(r.colaborador));
 }
 
 async function loadEquipoInfoRf() {

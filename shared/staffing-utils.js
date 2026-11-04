@@ -272,6 +272,32 @@ function escAttr(s) {
 // Personas marcadas como inactivas en Roles_Usuarios (columna opcional
 // "Activo" con valor No / Inactivo / 0 / false). Si la columna no existe,
 // nadie se considera inactivo y hasActivoCol viene en false.
+// Activo = "Retirado": personas que ya salieron del equipo. Desaparecen de todas las
+// vistas (filas, filtros, capacidad, sugerencias); su historial sigue en Dashboard_Data.
+let personasRetiradas = new Set();
+function esRetirada(nombre) { return personasRetiradas.has(nombre); }
+async function fetchPersonasRetiradas() {
+  try {
+    const res = await gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_ROLES,
+    });
+    const rows = res.result.values || [];
+    const out = new Set();
+    if (rows.length >= 2) {
+      const h = rows[0].map(x => x.trim().toLowerCase());
+      const iP = h.indexOf('persona'), iA = h.indexOf('activo');
+      if (iP !== -1 && iA !== -1) rows.slice(1).forEach(r => {
+        if ((r[iA] || '').trim().toLowerCase() === 'retirado') {
+          const n = normalizaColaborador((r[iP] || '').trim());
+          if (n) out.add(n);
+        }
+      });
+    }
+    personasRetiradas = out;
+  } catch (e) { /* sin acceso: nadie retirado */ }
+  return personasRetiradas;
+}
+
 async function fetchPersonasInactivas() {
   try {
     const res = await gapi.client.sheets.spreadsheets.values.get({
@@ -337,7 +363,7 @@ async function fetchAllPersonas() {
     // Activo = "Excluir": cuentas que inician sesión pero no son parte del equipo (ej. usuario de prueba)
     const iActivo = h.indexOf('activo');
     return rows.slice(1)
-      .filter(r => iActivo === -1 || (r[iActivo] || '').trim().toLowerCase() !== 'excluir')
+      .filter(r => iActivo === -1 || !['excluir', 'retirado'].includes((r[iActivo] || '').trim().toLowerCase()))
       .map(r => normalizaColaborador((r[iPersona] || '').trim())).filter(Boolean);
   } catch (e) { return []; }
 }

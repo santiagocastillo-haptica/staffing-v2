@@ -194,6 +194,10 @@
         <div class="update-notice" id="updateNotice">Cargando datos…</div>
         <span class="changes-badge" id="changesBadge"></span>
         <div class="view-range">
+          <label for="periodoSelect">Periodo</label>
+          <select id="periodoSelect" onchange="onPeriodoChange(this.value)"></select>
+        </div>
+        <div class="view-range">
           <label for="viewRangeSelect">Ver</label>
           <select id="viewRangeSelect" onchange="onViewRangeChange(this.value)">
             <option value="week">Semana actual y anterior</option>
@@ -278,6 +282,29 @@ function getViewRange() {
 }
 function onViewRangeChange(mode) {
   localStorage.setItem(VIEW_RANGE_KEY, mode);
+  buildWeekRange();
+  renderMatrix();
+}
+
+const PERIODO_KEY = 'timeReportPeriodo';
+function getPeriodo() { return localStorage.getItem(PERIODO_KEY) || 'rolling'; }
+function enModoTrimestre() { return getPeriodo().startsWith('q:'); }
+function populatePeriodoSelect() {
+  const sel = document.getElementById('periodoSelect');
+  sel.innerHTML = '<option value="rolling">Semana actual en adelante</option><optgroup label="Un trimestre completo (pasado o futuro)">' + quarterOptionsHtml() + '</optgroup>';
+  sel.value = getPeriodo();
+  if (sel.value !== getPeriodo()) { sel.value = 'rolling'; localStorage.setItem(PERIODO_KEY, 'rolling'); }
+  syncRangeControls();
+}
+// Con un trimestre elegido, "Ver" y "Semanas atrás" no aplican
+function syncRangeControls() {
+  const q = enModoTrimestre();
+  document.getElementById('viewRangeSelect').disabled = q;
+  document.getElementById('weeksBackSelect').disabled = q;
+}
+function onPeriodoChange(v) {
+  localStorage.setItem(PERIODO_KEY, v);
+  syncRangeControls();
   buildWeekRange();
   renderMatrix();
 }
@@ -411,6 +438,7 @@ async function toggleProyectoEstado(proy) {
 }
 
 function buildWeekRange() {
+  if (enModoTrimestre()) { weekRange = weeksInQuarter(getPeriodo().slice(2)); return; }
   const full = getFullWeekRange();
   const cur = getCurrentIsoYearWeek();
   const curMonday = getWeekMonday(cur.semana, cur.año).getTime();
@@ -786,6 +814,7 @@ function showToast(msg, type = '') {
 
 document.getElementById('viewRangeSelect').value = getViewRange();
 document.getElementById('weeksBackSelect').value = String(getWeeksBack());
+populatePeriodoSelect();
 document.getElementById('chkHideClosed').checked = getHideClosed();
 
 HapticaAuth.init({

@@ -97,6 +97,31 @@
     .gantt-table td.g-cur { box-shadow: inset 2px 0 0 #003237, inset -2px 0 0 #003237; }
     .gantt-table td.g-gap { background: repeating-linear-gradient(45deg,#eef2f3,#eef2f3 3px,#d4dfe2 3px,#d4dfe2 5px); }
     .gantt-table tr.g-closed .g-name { color:#8a9ea3; font-weight:500; }
+    .cierre-sheet { background:#fff; border:1px solid #d4dfe2; border-radius:10px; padding:22px 26px; max-width:1100px; }
+    .cierre-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; border-bottom:3px solid #003237; padding-bottom:10px; margin-bottom:14px; }
+    .cierre-head h2 { font-size:20px; color:#003237; margin:0; }
+    .cierre-sub { font-size:12px; color:#5b7379; margin-top:3px; }
+    .cierre-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:18px; }
+    .cierre-kpi { border:1px solid #d4dfe2; border-radius:8px; padding:10px 12px; }
+    .cierre-kpi .l { font-size:10px; text-transform:uppercase; letter-spacing:.4px; color:#5b7379; font-weight:700; }
+    .cierre-kpi .v { font-size:22px; font-weight:800; color:#003237; margin-top:2px; }
+    .cierre-kpi .v.neg { color:#b91c1c; } .cierre-kpi .v.pos { color:#166534; }
+    .cierre-h3 { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#003237; margin:18px 0 6px; }
+    .cierre-table { width:100%; border-collapse:collapse; font-size:12px; }
+    .cierre-table th { background:#003237; color:#fff; text-align:right; padding:6px 10px; font-weight:600; }
+    .cierre-table th:first-child, .cierre-table td:first-child { text-align:left; }
+    .cierre-table td { padding:6px 10px; border-bottom:1px solid #eef2f3; text-align:right; color:#1a2e35; }
+    .cierre-table tr.tot td { font-weight:800; border-top:2px solid #003237; background:#eef6f4; }
+    .cierre-bars { display:flex; align-items:flex-end; gap:3px; height:120px; border-bottom:1px solid #d4dfe2; padding:0 2px; overflow-x:auto; }
+    .cierre-bar { flex:0 0 14px; display:flex; align-items:flex-end; gap:1px; height:100%; }
+    .cierre-bar i { display:block; width:6px; border-radius:2px 2px 0 0; }
+    .cierre-pill { display:inline-block; padding:2px 10px; border-radius:99px; font-size:11px; font-weight:700; }
+    @media print {
+      .no-print, .view-tabs, #navContainer, .hap-nav, .sidebar, header { display:none !important; }
+      body { background:#fff !important; }
+      .cierre-sheet { border:none; padding:0; max-width:none; }
+      #dashboardView, #clasicoView, #ganttView { display:none !important; }
+    }
     .view-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
     .view-tab-btn {
       padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer;
@@ -197,6 +222,7 @@
       <button class="view-tab-btn active" data-view="dashboard" onclick="setMainView('dashboard')">📊 Dashboard</button>
       <button class="view-tab-btn" data-view="clasico" onclick="setMainView('clasico')">🗂 Vista Clásica</button>
       <button class="view-tab-btn" data-view="gantt" onclick="setMainView('gantt')">📅 Gantt</button>
+      <button class="view-tab-btn" data-view="cierre" onclick="setMainView('cierre')">📋 Cierre de proyecto</button>
     </div>
 
     <div id="dashboardView">
@@ -318,6 +344,21 @@
       </div>
     </div>
 
+    <div id="cierreView" style="display:none">
+      <div class="clasico-toolbar no-print">
+        <div class="clasico-toolbar-left" style="gap:8px;flex-wrap:wrap">
+          <input id="cierreProyecto" class="periodo-select" style="min-width:280px" list="listaProyectosCierre" placeholder="Escribe o elige un proyecto…" onchange="renderCierre()" oninput="renderCierre()">
+          <datalist id="listaProyectosCierre"></datalist>
+          <select id="cierreFiltroEstado" class="periodo-select" onchange="populateCierreLista()">
+            <option value="cerrado">Lista: proyectos cerrados</option>
+            <option value="todos">Lista: todos los proyectos</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px"><button class="btn-secondary" onclick="window.print()">🖨 Imprimir / guardar PDF</button></div>
+      </div>
+      <div id="cierreContent"><div class="state-msg">Elige un proyecto para ver su hoja de cierre.</div></div>
+    </div>
+
     <div id="ganttView" style="display:none">
       <div class="clasico-toolbar">
         <div class="clasico-toolbar-left" style="gap:8px;flex-wrap:wrap">
@@ -372,6 +413,7 @@ let proyectoEstadoClasico    = {}; // { [proyecto]: 'Activo' | 'Cerrado' }
 let proyectosRowIndexClasico = {};
 
 async function loadData() {
+  await fetchPersonasRetiradas();
   document.getElementById('tableContainer').innerHTML =
     '<div class="state-msg"><div class="spinner"></div>Cargando datos…</div>';
   try {
@@ -417,7 +459,7 @@ async function loadData() {
       obj.horaspresupuestadas = Number(obj.horaspresupuestadas) || 0;
       obj.horasejecutadas = Number(obj.horasejecutadas) || 0;
       return obj;
-    }).filter(r => r.semana && r.colaborador);
+    }).filter(r => r.semana && r.colaborador && !esRetirada(r.colaborador));
 
     await populateFilters();
     updateTimestamp();
@@ -915,9 +957,116 @@ function setMainView(view) {
   document.getElementById('dashboardView').style.display = view === 'dashboard' ? '' : 'none';
   document.getElementById('clasicoView').style.display = view === 'clasico' ? '' : 'none';
   document.getElementById('ganttView').style.display = view === 'gantt' ? '' : 'none';
+  document.getElementById('cierreView').style.display = view === 'cierre' ? '' : 'none';
   document.querySelectorAll('.view-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   if (view === 'clasico' && !clasicoLoaded) loadClasicoView();
   if (view === 'gantt') loadGanttView();
+  if (view === 'cierre') loadCierreView();
+}
+
+// ── Hoja de cierre de proyecto ──────────────────────────────────────────────
+// Resumen final calculado desde Dashboard_Data: fechas, equipo, presupuestado vs
+// ejecutado total, por persona y por trimestre, y evolución semanal.
+let cierreLoaded = false;
+async function loadCierreView() {
+  if (!cierreLoaded) {
+    cierreLoaded = true;
+    if (!Object.keys(proyectoEstadoClasico).length) { try { await loadProyectosCatalogClasico(); } catch (e) {} }
+  }
+  populateCierreLista();
+}
+function populateCierreLista() {
+  const soloCerrados = document.getElementById('cierreFiltroEstado').value === 'cerrado';
+  const todos = [...new Set(allData.map(r => r.proyecto).filter(p => p && p !== '—'))];
+  const lista = sortProjects(todos.filter(p => !soloCerrados || proyectoEstadoClasico[p] === 'Cerrado'));
+  document.getElementById('listaProyectosCierre').innerHTML = lista.map(p => `<option value="${escAttr(p)}">`).join('');
+  const inp = document.getElementById('cierreProyecto');
+  inp.placeholder = lista.length ? 'Escribe o elige un proyecto…' : (soloCerrados ? 'No hay proyectos cerrados — cambia a "todos"' : 'Sin proyectos');
+}
+function desvPill(presup, ejec) {
+  if (!presup) return { label: 'Sin presupuesto', bg: '#eef2f3', fg: '#5b7379' };
+  const r = ejec / presup;
+  if (r > 1.2) return { label: 'Crítico', bg: '#fee2e2', fg: '#991b1b' };
+  if (r > 1.0) return { label: 'Excedido', bg: '#ffedd5', fg: '#9a3412' };
+  if (r >= 0.8) return { label: 'Revisar', bg: '#fef9c3', fg: '#854d0e' };
+  return { label: 'En presupuesto', bg: '#dcfce7', fg: '#166534' };
+}
+function renderCierre() {
+  const cont = document.getElementById('cierreContent');
+  const proy = document.getElementById('cierreProyecto').value.trim();
+  const rows = allData.filter(r => r.proyecto === proy);
+  if (!proy) { cont.innerHTML = '<div class="state-msg">Elige un proyecto para ver su hoja de cierre.</div>'; return; }
+  if (!rows.length) { cont.innerHTML = '<div class="state-msg">Ese proyecto no tiene registros todavía (revisa el nombre).</div>'; return; }
+
+  const all = getFullWeekRange();
+  const idx = {}; all.forEach((w, i) => idx[w.key] = i);
+  const porSemana = {}, porPersona = {}, porTrim = {};
+  let totP = 0, totE = 0;
+  rows.forEach(r => {
+    const k = semanaAnioKey(r.semana, r.año);
+    const p = r.horaspresupuestadas || 0, e = r.horasejecutadas || 0;
+    totP += p; totE += e;
+    (porSemana[k] = porSemana[k] || { p: 0, e: 0 }); porSemana[k].p += p; porSemana[k].e += e;
+    (porPersona[r.colaborador] = porPersona[r.colaborador] || { p: 0, e: 0 }); porPersona[r.colaborador].p += p; porPersona[r.colaborador].e += e;
+    if (idx[k] !== undefined) {
+      const qk = quarterKeyOfWeek(all[idx[k]]);
+      (porTrim[qk] = porTrim[qk] || { p: 0, e: 0 }); porTrim[qk].p += p; porTrim[qk].e += e;
+    }
+  });
+  const conActividad = Object.keys(porSemana).filter(k => idx[k] !== undefined && (porSemana[k].p > 0 || porSemana[k].e > 0)).sort((a, b) => idx[a] - idx[b]);
+  const ini = conActividad.length ? all[idx[conActividad[0]]] : null;
+  const fin = conActividad.length ? all[idx[conActividad[conActividad.length - 1]]] : null;
+  const durSem = ini ? idx[fin.key] - idx[ini.key] + 1 : 0;
+  const personas = Object.keys(porPersona).filter(n => porPersona[n].p > 0 || porPersona[n].e > 0).sort((a, b) => (porPersona[b].e + porPersona[b].p) - (porPersona[a].e + porPersona[a].p));
+  const estado = proyectoEstadoClasico[proy] || 'Activo';
+  const desv = totE - totP;
+  const pill = desvPill(totP, totE);
+  const pct = totP ? (desv / totP) * 100 : null;
+  const f1 = n => fmt(Math.round(n * 10) / 10);
+  const signo = n => (n > 0 ? '+' : '') + f1(n);
+  const fechaLarga = w => w ? ganttFechaCorta(w) : '—';
+  const clsD = d => d > 0 ? 'neg' : (d < 0 ? 'pos' : '');
+  const maxBar = Math.max(1, ...conActividad.map(k => Math.max(porSemana[k].p, porSemana[k].e)));
+  const bars = conActividad.length ? (() => {
+    const out = [];
+    for (let i = idx[conActividad[0]]; i <= idx[conActividad[conActividad.length - 1]]; i++) {
+      const k = all[i].key, v = porSemana[k] || { p: 0, e: 0 };
+      out.push(`<div class="cierre-bar" title="${escAttr(weekDateLabel(all[i].semana, all[i].año) + ' · presup. ' + f1(v.p) + ' h · ejec. ' + f1(v.e) + ' h')}"><i style="height:${(v.p / maxBar) * 100}%;background:#003237"></i><i style="height:${(v.e / maxBar) * 100}%;background:#FA4616"></i></div>`);
+    }
+    return out.join('');
+  })() : '';
+
+  cont.innerHTML = `<div class="cierre-sheet">
+    <div class="cierre-head">
+      <div>
+        <h2>Cierre de proyecto · ${proy}</h2>
+        <div class="cierre-sub">Estado: <b>${estado}</b> · Periodo: <b>${fechaLarga(ini)}</b> → <b>${fechaLarga(fin)}</b> (${durSem} semanas) · Equipo: <b>${personas.length}</b> persona(s) · Generado el ${new Date().toLocaleDateString('es-CO')}</div>
+      </div>
+      <span class="cierre-pill" style="background:${pill.bg};color:${pill.fg}">${pill.label}</span>
+    </div>
+    <div class="cierre-kpis">
+      <div class="cierre-kpi"><div class="l">Horas presupuestadas</div><div class="v">${f1(totP)}</div></div>
+      <div class="cierre-kpi"><div class="l">Horas ejecutadas</div><div class="v">${f1(totE)}</div></div>
+      <div class="cierre-kpi"><div class="l">Desviación (h)</div><div class="v ${clsD(desv)}">${signo(desv)}</div></div>
+      <div class="cierre-kpi"><div class="l">Desviación (%)</div><div class="v ${clsD(desv)}">${pct === null ? '—' : (pct > 0 ? '+' : '') + pct.toFixed(1) + '%'}</div></div>
+      <div class="cierre-kpi"><div class="l">Promedio semanal</div><div class="v">${durSem ? f1(totE / durSem) : '—'} h</div></div>
+    </div>
+
+    <div class="cierre-h3">Resultado por persona</div>
+    <table class="cierre-table"><thead><tr><th>Persona</th><th>Presupuestadas</th><th>Ejecutadas</th><th>Desviación h</th><th>Desviación %</th></tr></thead><tbody>
+      ${personas.map(n => { const v = porPersona[n]; const d = v.e - v.p; return `<tr><td>${n}</td><td>${f1(v.p)}</td><td>${f1(v.e)}</td><td>${signo(d)}</td><td>${v.p ? ((d / v.p) * 100 > 0 ? '+' : '') + ((d / v.p) * 100).toFixed(1) + '%' : '—'}</td></tr>`; }).join('')}
+      <tr class="tot"><td>Total</td><td>${f1(totP)}</td><td>${f1(totE)}</td><td>${signo(desv)}</td><td>${pct === null ? '—' : (pct > 0 ? '+' : '') + pct.toFixed(1) + '%'}</td></tr>
+    </tbody></table>
+
+    <div class="cierre-h3">Resultado por trimestre</div>
+    <table class="cierre-table"><thead><tr><th>Trimestre</th><th>Presupuestadas</th><th>Ejecutadas</th><th>Desviación h</th></tr></thead><tbody>
+      ${Object.keys(porTrim).sort().map(qk => { const v = porTrim[qk]; const [a, q] = qk.split('-'); return `<tr><td>Q${q} ${a}</td><td>${f1(v.p)}</td><td>${f1(v.e)}</td><td>${signo(v.e - v.p)}</td></tr>`; }).join('')}
+    </tbody></table>
+
+    <div class="cierre-h3">Evolución semanal <span style="font-weight:500;text-transform:none;letter-spacing:0;color:#5b7379">(<span style="color:#003237">■</span> presupuestado · <span style="color:#FA4616">■</span> ejecutado)</span></div>
+    <div class="cierre-bars">${bars}</div>
+    <div class="cierre-sub" style="margin-top:6px">Las horas ejecutadas son las registradas por cada persona en Registro de Horas. Si el proyecto aún está Activo, la hoja es parcial.</div>
+  </div>`;
 }
 
 // ── Gantt de proyectos ──────────────────────────────────────────────────────

@@ -353,6 +353,7 @@ let sheetRows     = [];
 let colIdx        = {};
 
 async function loadData() {
+  await fetchPersonasRetiradas();
   document.getElementById('matrixContainer').innerHTML =
     '<div class="state-msg"><div class="spinner"></div>Cargando datos…</div>';
   try {
@@ -379,7 +380,7 @@ async function loadData() {
       obj.año = Number(obj.año) || (obj.semana ? inferAnioLegacy(obj.semana) : null);
       obj.horaspresupuestadas = Number(obj.horaspresupuestadas) || 0;
       return obj;
-    }).filter(r => r.semana && r.colaborador);
+    }).filter(r => r.semana && r.colaborador && !esRetirada(r.colaborador));
 
     personasActivas = todas.filter(p => !estado.inactivas.has(p)).sort();
     capacidades = caps;
