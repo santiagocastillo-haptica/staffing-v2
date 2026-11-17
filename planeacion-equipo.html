@@ -507,7 +507,8 @@ function computeWeekly() {
     const nuevos = hires.filter(h => hireMonday(h) <= w.monday).length;
     const activasEn = personasActivas.filter(x => activaEn(x, w.monday));
     const nPersonas = activasEn.length + nuevos;
-    const headcount = activasEn.reduce((s, x) => s + capOf(x), 0) + nuevos; // en FTE
+    const off = esSemanaOff(w.key); // semana off: nadie tiene capacidad
+    const headcount = off ? 0 : activasEn.reduce((s, x) => s + capOf(x), 0) + nuevos; // en FTE
     const capacidad = headcount * HORAS_SEMANA;
     const porRol = {};
     const add = (r, d, c) => { const o = porRol[r] || (porRol[r] = { demanda: 0, capacidad: 0, residual: 0 }); o.demanda += d; o.capacidad += c; };
@@ -520,8 +521,8 @@ function computeWeekly() {
       if (!pr.keys.has(w.key)) return;
       Object.entries(pr.horasPorRol || {}).forEach(([r, hh]) => add(r, hh / pr.keys.size, 0));
     });
-    personasActivas.filter(x => activaEn(x, w.monday)).forEach(x => add(rolDe(x), 0, capOf(x) * HORAS_SEMANA));
-    hires.filter(h => hireMonday(h) <= w.monday).forEach(h => add(rolDe(hireKey(h)), 0, HORAS_SEMANA));
+    personasActivas.filter(x => activaEn(x, w.monday)).forEach(x => add(rolDe(x), 0, off ? 0 : capOf(x) * HORAS_SEMANA));
+    hires.filter(h => hireMonday(h) <= w.monday).forEach(h => add(rolDe(hireKey(h)), 0, off ? 0 : HORAS_SEMANA));
 
     // Horas residuales: lo que le queda a cada persona frente a su capacidad objetivo
     // (40 h × ocupación objetivo) pero por debajo del mínimo que su rol necesita para un proyecto.
@@ -529,6 +530,7 @@ function computeWeekly() {
     const resPersona = {};
     let residual = 0;
     const evaluar = (clave, capFrac) => {
+      if (off) return; // sin capacidad no hay horas residuales
       const rol = rolDe(clave);
       const carga = Object.values(demEf[clave] || {}).reduce((s, m) => s + (m[w.key] || 0), 0);
       const libre = Math.max(0, capFrac * HORAS_SEMANA * objetivo - carga);
@@ -542,7 +544,7 @@ function computeWeekly() {
     personasActivas.filter(x => activaEn(x, w.monday)).forEach(x => evaluar(x, capOf(x)));
     hires.filter(h => hireMonday(h) <= w.monday).forEach(h => evaluar(hireKey(h), 1));
     const total = asignada + porReasignar + simulada + vacantesH;
-    return { w, porRol, resPersona, residual, asignada, porReasignar, simulada, vacantes: vacantesH, demanda: total, headcount, nPersonas, nuevos, capacidad, carga: capacidad > 0 ? total / capacidad : null };
+    return { w, off, porRol, resPersona, residual, asignada, porReasignar, simulada, vacantes: vacantesH, demanda: total, headcount, nPersonas, nuevos, capacidad, carga: capacidad > 0 ? total / capacidad : null };
   });
 }
 
@@ -554,7 +556,8 @@ function targetFraction() {
 function renderHorizontes(weekly) {
   const cur = getCurrentIsoYearWeek();
   const curMonday = getWeekMonday(cur.semana, cur.año).getTime();
-  const futuras = weekly.filter(x => x.w.monday >= curMonday);
+  // Las semanas off (capacidad 0%) no cuentan en los promedios de los horizontes
+  const futuras = weekly.filter(x => x.w.monday >= curMonday && !x.off);
   const objetivo = targetFraction();
 
   document.getElementById('horizonGrid').innerHTML = HORIZONTES.map(hz => {

@@ -212,7 +212,12 @@ function getFullWeekRange() {
 // ── Capacidad semanal (festivos / tardes libres) ───────────────────────────
 // `key` debe ser semanaAnioKey(semana, año) — configMap ahora se indexa por
 // semana+año, no solo por semana, para no mezclar años distintos.
+// Semanas en las que todo el equipo está off (cierre de año): capacidad 0% para todo.
+const SEMANAS_OFF = new Set(['2026-52', '2026-53', '2027-1']);
+function esSemanaOff(key) { return SEMANAS_OFF.has(key); }
+
 function capPct(key, configMap) {
+  if (esSemanaOff(key)) return 0;
   const cfg = (configMap && configMap[key]) || {};
   const cap = 40 - (cfg.festivos || 0) * 8 - (cfg.tardes_libres || 0) * 4;
   return Math.min(cap, 40) / 40;

@@ -274,7 +274,10 @@ function buildTotalesPersonaSemana() {
 
 // Horas libres de una persona en una semana, descontando lo que ya tiene en OTROS
 // proyectos y lo que se le propone en este. Capacidad sobre 40 h, ponderada por su % de capacidad.
-function capacidadHoras(p) { return 40 * (p in capacidadesRf ? capacidadesRf[p] : 1); }
+function capacidadHoras(p, wk) {
+  if (wk && esSemanaOff(wk)) return 0; // semana off del equipo
+  return 40 * (p in capacidadesRf ? capacidadesRf[p] : 1);
+}
 function horasOtrosProyectos(p, wk, equipoMatrix) {
   const total = totalesPersonaSemana[p + '|' + wk] || 0;
   const aqui = (equipoMatrix[p] && equipoMatrix[p][wk]) || 0;
@@ -658,8 +661,8 @@ function renderModificacion() {
 
   const thead = buildWeeksTheadHtml(weeks, 'Total');
   const tbody = personas.map(p => {
-    const cap = capacidadHoras(p);
     const cells = weeks.map(w => {
+      const cap = capacidadHoras(p, w.key);
       const val = valueFor(p, w.key);
       const otros = horasOtrosProyectos(p, w.key, equipoMatrix);
       const futura = w.monday >= hoy;
@@ -714,6 +717,13 @@ function updateCarga() {
     const val = valorCelda(p, wk);
     const cap = Number(el.dataset.cap), otros = Number(el.dataset.otros);
     const carga = cap > 0 ? (otros + val) / cap : ((otros + val) > 0 ? 9.99 : 0);
+    if (cap <= 0) { // semana off: capacidad 0%
+      el.textContent = 'OFF 0%'; el.className = 'rf-free ' + ((otros + val) > 0 ? 'neg' : '');
+      const i0 = document.querySelector(`#modTable .rf-input[data-persona="${CSS.escape(p)}"][data-week="${wk}"]`);
+      if (i0) i0.classList.toggle('over', val > 0);
+      semOtros[wk] = (semOtros[wk] || 0) + otros + val; semCap[wk] = 0;
+      return;
+    }
     el.textContent = (otros + val) > 0 ? pct(carga) : '';
     el.className = 'rf-free ' + (carga > 1 ? 'neg' : carga >= 0.85 ? 'low' : '');
     const inp = document.querySelector(`#modTable .rf-input[data-persona="${CSS.escape(p)}"][data-week="${wk}"]`);
@@ -724,6 +734,7 @@ function updateCarga() {
   document.querySelectorAll('#modTable [data-tw]').forEach(td => { const v = semTot[td.dataset.tw] || 0; td.textContent = v ? fmt(v) : ''; });
   const all = document.querySelector('#modTable [data-tw-all]'); if (all) all.textContent = fmt(granTotal);
   document.querySelectorAll('#modTable [data-cw]').forEach(td => {
+    if (esSemanaOff(td.dataset.cw)) { td.textContent = 'OFF 0%'; td.className = 'rf-capw ' + ((semOtros[td.dataset.cw] || 0) > 0 ? 'neg' : ''); return; }
     const c = semCap[td.dataset.cw] || 0, h = semOtros[td.dataset.cw] || 0;
     const carga = c > 0 ? h / c : 0;
     td.textContent = h > 0 ? pct(carga) : '';
@@ -735,7 +746,7 @@ function updateCarga() {
 function semanasFuturasVisibles(weeks) {
   const c = getCurrentIsoYearWeek();
   const hoy = getWeekMonday(c.semana, c.año).getTime();
-  return weeks.filter(w => w.monday >= hoy);
+  return weeks.filter(w => w.monday >= hoy && !esSemanaOff(w.key)); // las semanas off no cuentan
 }
 
 function renderSugerencias(canAct, personas, weeks, equipoMatrix) {
