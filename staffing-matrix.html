@@ -694,6 +694,55 @@ function renderChart(data) {
   });
 }
 
+// ── Trend chart ─────────────────────────────────────────────────────────
+function renderTrend(data) {
+  const byWeek = {};
+  data.forEach(r => {
+    if (!r.semana || !r.año) return;
+    const key = semanaAnioKey(r.semana, r.año);
+    if (!byWeek[key]) byWeek[key] = { pres: 0, ejec: 0, semana: r.semana, año: r.año, monday: getWeekMonday(r.semana, r.año).getTime() };
+    byWeek[key].pres += r.horaspresupuestadas || 0;
+    byWeek[key].ejec += r.horasejecutadas || 0;
+  });
+
+  const weeks = Object.values(byWeek).sort((a, b) => a.monday - b.monday);
+  const labels = weeks.map(w => `S${w.semana}·${String(w.año).slice(2)}`);
+  const pres = weeks.map(w => w.pres);
+  const ejec = weeks.map(w => w.ejec);
+
+  const ctx = document.getElementById('trendChart').getContext('2d');
+  if (trendChartInstance) trendChartInstance.destroy();
+  trendChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Presupuestadas', data: pres, borderColor: '#003237', backgroundColor: 'rgba(0,50,55,0.08)', borderWidth: 2, borderDash: [6, 3], pointRadius: 4, pointBackgroundColor: '#003237', fill: false, tension: 0.3 },
+        { label: 'Ejecutadas', data: ejec, borderColor: '#FA4616', backgroundColor: 'rgba(250,70,22,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#FA4616', fill: false, tension: 0.3 },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 12 } } }, tooltip: { mode: 'index', intersect: false } },
+      scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } }, x: { grid: { display: false } } },
+    },
+  });
+}
+
+// ── Timestamp ───────────────────────────────────────────────────────────
+function updateTimestamp() {
+  let d = null;
+  const dates = allData.map(r => r.ultimaactualizacion).filter(Boolean);
+  if (dates.length) {
+    const latest = dates.reduce((a, b) => (a > b ? a : b));
+    const parsed = new Date(latest);
+    if (!isNaN(parsed) && parsed.getFullYear() >= 2020) d = parsed;
+  }
+  if (!d) d = new Date();
+  const formatted = d.toLocaleString('es-CL', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  document.getElementById('updateNotice').textContent = `Datos actualizados al ${formatted}`;
+}
+
 // ── Main update cycle ─────────────────────────────────────────────────────
 function updateDashboard() {
   const data = getFiltered();
