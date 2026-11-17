@@ -110,6 +110,8 @@
     .cierre-table { width:100%; border-collapse:collapse; font-size:12px; }
     .cierre-table th { background:#003237; color:#fff; text-align:right; padding:6px 10px; font-weight:600; }
     .cierre-table th:first-child, .cierre-table td:first-child { text-align:left; }
+    .cierre-table td.cneg { color:#b91c1c; font-weight:700; } .cierre-table td.cpos { color:#166534; font-weight:700; }
+    .cierre-table th[style*="text-align:left"], .cierre-table td[style*="text-align:left"] { text-align:left !important; }
     .cierre-table td { padding:6px 10px; border-bottom:1px solid #eef2f3; text-align:right; color:#1a2e35; }
     .cierre-table tr.tot td { font-weight:800; border-top:2px solid #003237; background:#eef6f4; }
     .cierre-bars { display:flex; align-items:flex-end; gap:3px; height:120px; border-bottom:1px solid #d4dfe2; padding:0 2px; overflow-x:auto; }
@@ -313,11 +315,6 @@
       <canvas id="trendChart" height="90"></canvas>
     </div>
 
-    <div class="table-card">
-      <h2>Detalle por proyecto</h2>
-      <div id="tableContainer"><div class="state-msg"><div class="spinner"></div>Cargando…</div></div>
-    </div>
-
     <div id="desgloseCard" style="display:none">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
         <h2 style="font-size:15px;font-weight:600;color:#1a2e35;margin-bottom:4px">Desglose por equipo y semana</h2>
@@ -414,8 +411,7 @@ let proyectosRowIndexClasico = {};
 
 async function loadData() {
   await fetchPersonasRetiradas();
-  document.getElementById('tableContainer').innerHTML =
-    '<div class="state-msg"><div class="spinner"></div>Cargando datos…</div>';
+  document.getElementById('updateNotice').textContent = 'Cargando datos…';
   try {
     let cfgRes = { result: { values: [] } };
     try {
@@ -464,10 +460,10 @@ async function loadData() {
     await populateFilters();
     updateTimestamp();
     updateDashboard();
+    abrirCierreDesdeUrl();
   } catch (err) {
     console.error(err);
-    document.getElementById('tableContainer').innerHTML =
-      `<div class="state-msg">⚠️ No se pudo cargar la información.<br><small>${errMsg(err)}</small></div>`;
+    document.getElementById('updateNotice').textContent = '⚠️ No se pudo cargar la información: ' + errMsg(err);
   }
 }
 
@@ -698,133 +694,11 @@ function renderChart(data) {
   });
 }
 
-// ── Table ───────────────────────────────────────────────────────────────
-function renderTable(data) {
-  const container = document.getElementById('tableContainer');
-  if (!data.length) {
-    container.innerHTML = '<div class="state-msg">Sin datos para los filtros seleccionados.</div>';
-    return;
-  }
-
-  const map = {};
-  data.forEach(r => {
-    const key = (r.proyecto || '') + '||' + (r.colaborador || '');
-    if (!map[key]) map[key] = { proyecto: r.proyecto || '—', colaborador: r.colaborador || '—', presup: 0, ejec: 0, estado: r.estado };
-    map[key].presup += r.horaspresupuestadas || 0;
-    map[key].ejec += r.horasejecutadas || 0;
-    map[key].estado = r.estado;
-  });
-
-  const grouped = Object.values(map).sort((a, b) => a.proyecto.localeCompare(b.proyecto) || a.colaborador.localeCompare(b.colaborador));
-
-  // Totales históricos por proyecto+colaborador (todas las semanas, respetando
-  // los demás filtros pero NO el de semana) — para mostrar el total del
-  // proyecto sin importar qué semana puntual se esté mirando en la tabla.
-  const totalsMap = {};
-  allData.filter(passesCommonFilters).forEach(r => {
-    const key = (r.proyecto || '') + '||' + (r.colaborador || '');
-    if (!totalsMap[key]) totalsMap[key] = { presup: 0, ejec: 0 };
-    totalsMap[key].presup += r.horaspresupuestadas || 0;
-    totalsMap[key].ejec += r.horasejecutadas || 0;
-  });
-
-  const calcEstado = (presup, ejec) => {
-    if (!presup) return { label: '—', cls: 'pill-warning', rowCls: '' };
-    const ratio = ejec / presup;
-    if (ratio > 1.2) return { label: 'Crítico', cls: 'pill-critical', rowCls: 'row-critical' };
-    if (ratio > 1.0) return { label: 'Presupuesto excedido', cls: 'pill-exceeded', rowCls: 'row-alerta' };
-    if (ratio >= 0.8) return { label: 'Revisar cumplimiento', cls: 'pill-warning', rowCls: '' };
-    return { label: 'En presupuesto', cls: 'pill-ok', rowCls: '' };
-  };
-
-  const rows = grouped.map(r => {
-    const desv = r.ejec - r.presup;
-    const cls = desv >= 0 ? 'num-neg' : 'num-pos';
-    const estado = calcEstado(r.presup, r.ejec);
-    const tot = totalsMap[(r.proyecto || '') + '||' + (r.colaborador || '')] || { presup: 0, ejec: 0 };
-    const totDesv = tot.ejec - tot.presup;
-    const totCls = totDesv >= 0 ? 'num-neg' : 'num-pos';
-    return `<tr class="${estado.rowCls}">
-      <td>${r.proyecto}</td>
-      <td>${r.colaborador}</td>
-      <td style="text-align:right">${fmt(r.presup)}</td>
-      <td style="text-align:right">${fmt(r.ejec)}</td>
-      <td style="text-align:right" class="${cls}">${(desv >= 0 ? '+' : '') + fmt(desv)}</td>
-      <td><span class="pill ${estado.cls}">${estado.label}</span></td>
-      <td class="col-total" style="text-align:right">${fmt(tot.presup)}</td>
-      <td class="col-total" style="text-align:right">${fmt(tot.ejec)}</td>
-      <td class="col-total ${totCls}" style="text-align:right">${(totDesv >= 0 ? '+' : '') + fmt(totDesv)}</td>
-    </tr>`;
-  }).join('');
-
-  container.innerHTML = `
-    <table>
-      <thead><tr>
-        <th>Proyecto</th><th>Colaborador</th>
-        <th style="text-align:right">Presupuestadas</th><th style="text-align:right">Ejecutadas</th><th style="text-align:right">Desviación</th><th>Estado</th>
-        <th class="col-total" style="text-align:right">Presup. total proyecto</th>
-        <th class="col-total" style="text-align:right">Ejec. total proyecto</th>
-        <th class="col-total" style="text-align:right">Desv. total proyecto</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-}
-
-// ── Trend chart ─────────────────────────────────────────────────────────
-function renderTrend(data) {
-  const byWeek = {};
-  data.forEach(r => {
-    if (!r.semana || !r.año) return;
-    const key = semanaAnioKey(r.semana, r.año);
-    if (!byWeek[key]) byWeek[key] = { pres: 0, ejec: 0, semana: r.semana, año: r.año, monday: getWeekMonday(r.semana, r.año).getTime() };
-    byWeek[key].pres += r.horaspresupuestadas || 0;
-    byWeek[key].ejec += r.horasejecutadas || 0;
-  });
-
-  const weeks = Object.values(byWeek).sort((a, b) => a.monday - b.monday);
-  const labels = weeks.map(w => `S${w.semana}·${String(w.año).slice(2)}`);
-  const pres = weeks.map(w => w.pres);
-  const ejec = weeks.map(w => w.ejec);
-
-  const ctx = document.getElementById('trendChart').getContext('2d');
-  if (trendChartInstance) trendChartInstance.destroy();
-  trendChartInstance = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        { label: 'Presupuestadas', data: pres, borderColor: '#003237', backgroundColor: 'rgba(0,50,55,0.08)', borderWidth: 2, borderDash: [6, 3], pointRadius: 4, pointBackgroundColor: '#003237', fill: false, tension: 0.3 },
-        { label: 'Ejecutadas', data: ejec, borderColor: '#FA4616', backgroundColor: 'rgba(250,70,22,0.08)', borderWidth: 2, pointRadius: 4, pointBackgroundColor: '#FA4616', fill: false, tension: 0.3 },
-      ],
-    },
-    options: {
-      responsive: true,
-      plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 12 } } }, tooltip: { mode: 'index', intersect: false } },
-      scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } }, x: { grid: { display: false } } },
-    },
-  });
-}
-
-// ── Timestamp ───────────────────────────────────────────────────────────
-function updateTimestamp() {
-  let d = null;
-  const dates = allData.map(r => r.ultimaactualizacion).filter(Boolean);
-  if (dates.length) {
-    const latest = dates.reduce((a, b) => (a > b ? a : b));
-    const parsed = new Date(latest);
-    if (!isNaN(parsed) && parsed.getFullYear() >= 2020) d = parsed;
-  }
-  if (!d) d = new Date();
-  const formatted = d.toLocaleString('es-CL', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  document.getElementById('updateNotice').textContent = `Datos actualizados al ${formatted}`;
-}
-
 // ── Main update cycle ─────────────────────────────────────────────────────
 function updateDashboard() {
   const data = getFiltered();
   updateKPIs(data);
   renderChart(data);
-  renderTable(data);
   updateLoadBar();
 
   const trendData = allData.filter(r => passesCommonFilters(r));
@@ -968,12 +842,58 @@ function setMainView(view) {
 // Resumen final calculado desde Dashboard_Data: fechas, equipo, presupuestado vs
 // ejecutado total, por persona y por trimestre, y evolución semanal.
 let cierreLoaded = false;
+let cierreSolicitudes = [], cierreVenta = [];
+async function loadCierreExtras() {
+  cierreSolicitudes = []; cierreVenta = [];
+  try {
+    const res = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_SOLICITUDES });
+    const rows = res.result.values || [];
+    if (rows.length > 1) {
+      const h = rows[0].map(x => x.trim().toLowerCase());
+      const ix = n => h.indexOf(n);
+      cierreSolicitudes = rows.slice(1).map(r => ({
+        proyecto: r[ix('proyecto')] || '', turno: Number(r[ix('turno')]) || 1,
+        persona: r[ix('proponepersona')] || '', lado: r[ix('proponelado')] || '',
+        fecha: r[ix('fecha')] || '', json: r[ix('horasjson')] || '{}', estado: r[ix('estado')] || '',
+      })).filter(x => x.proyecto);
+    }
+  } catch (e) { /* pestaña opcional */ }
+  try {
+    const res = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_VENTA });
+    const rows = res.result.values || [];
+    if (rows.length > 1) {
+      const h = rows[0];
+      const ix = n => h.indexOf(n);
+      cierreVenta = rows.slice(1).map(r => ({
+        codigo: (r[ix('Código')] || '').trim(),
+        host: Number(r[ix('Horas Vendidas Host')]) || 0, owner: Number(r[ix('Horas Vendidas Owner')]) || 0,
+        doerEstrategia: Number(r[ix('Horas Vendidas Doer Estrategia')]) || 0,
+        doerLegal: Number(r[ix('Horas Vendidas Doer Legal')]) || 0, doerVisual: Number(r[ix('Horas Vendidas Doer Visual')]) || 0,
+      })).filter(v => v.codigo);
+    }
+  } catch (e) { /* pestaña opcional */ }
+}
+function ventaDeProyecto(proy) {
+  return cierreVenta.find(v => proy === v.codigo || proy.startsWith(v.codigo + ' ·') || proy.startsWith(v.codigo + ' '));
+}
 async function loadCierreView() {
   if (!cierreLoaded) {
     cierreLoaded = true;
     if (!Object.keys(proyectoEstadoClasico).length) { try { await loadProyectosCatalogClasico(); } catch (e) {} }
+    await loadCierreExtras();
   }
   populateCierreLista();
+}
+// Enlace directo desde Editar Presupuesto: staffing-matrix.html?cierre=NOMBRE
+async function abrirCierreDesdeUrl() {
+  const p = new URLSearchParams(location.search).get('cierre');
+  if (!p) return;
+  setMainView('cierre');
+  await loadCierreView();
+  document.getElementById('cierreFiltroEstado').value = 'todos';
+  populateCierreLista();
+  document.getElementById('cierreProyecto').value = p;
+  renderCierre();
 }
 function populateCierreLista() {
   const soloCerrados = document.getElementById('cierreFiltroEstado').value === 'cerrado';
@@ -990,6 +910,40 @@ function desvPill(presup, ejec) {
   if (r > 1.0) return { label: 'Excedido', bg: '#ffedd5', fg: '#9a3412' };
   if (r >= 0.8) return { label: 'Revisar', bg: '#fef9c3', fg: '#854d0e' };
   return { label: 'En presupuesto', bg: '#dcfce7', fg: '#166534' };
+}
+// Línea de tiempo de horas del proyecto: vendidas, cada reforecast aplicado (ajuste final) y vigente,
+// cada una contra las horas ejecutadas.
+function trazabilidadHtml(proy, totP, totE, f1, signo) {
+  const venta = ventaDeProyecto(proy);
+  const sols = cierreSolicitudes.filter(x => x.proyecto === proy).sort((a, b) => a.turno - b.turno || String(a.fecha).localeCompare(String(b.fecha)));
+  const meta = x => { try { return JSON.parse(x.json || '{}'); } catch (e) { return {}; } };
+  const fecha = x => String(x).slice(0, 10) || '—';
+  const hitos = [];
+  if (venta) {
+    const tot = venta.host + venta.owner + venta.doerEstrategia + venta.doerLegal + venta.doerVisual;
+    const det = [['Host', venta.host], ['Owner', venta.owner], ['Doer Estrategia', venta.doerEstrategia], ['Doer Legal', venta.doerLegal], ['Doer Visual', venta.doerVisual]].filter(([, v]) => v > 0).map(([l, v]) => `${l} ${f1(v)}`).join(' · ');
+    hitos.push({ nombre: 'Horas vendidas', fecha: '—', quien: det || 'Dimensionamiento de venta', horas: tot });
+  } else {
+    hitos.push({ nombre: 'Horas vendidas', fecha: '—', quien: 'Sin datos de Dimensionamiento de venta para este proyecto', horas: null });
+  }
+  let v = 0;
+  sols.filter(x => x.estado === 'Aprobada').forEach(x => {
+    v++;
+    const m = meta(x);
+    hitos.push({ nombre: 'Reforecast v' + v + (m._final ? ' (ajuste final)' : ''), fecha: fecha(x.fecha), quien: `${x.persona} (${x.lado})`, horas: m._totalProyecto !== undefined ? Number(m._totalProyecto) : null });
+  });
+  hitos.push({ nombre: 'Presupuesto vigente', fecha: new Date().toISOString().slice(0, 10), quien: 'Suma actual en Dashboard_Data', horas: totP });
+  let prev = null;
+  const filas = hitos.map(h => {
+    const delta = (h.horas !== null && prev !== null) ? h.horas - prev : null;
+    if (h.horas !== null) prev = h.horas;
+    const vs = h.horas !== null ? totE - h.horas : null;
+    const vsPct = h.horas ? (vs / h.horas) * 100 : null;
+    return `<tr><td>${h.nombre}</td><td>${h.fecha}</td><td style="text-align:left">${h.quien}</td><td>${h.horas === null ? '—' : f1(h.horas)}</td><td>${delta === null ? '—' : signo(delta)}</td><td>${f1(totE)}</td><td class="${vs > 0 ? 'cneg' : 'cpos'}">${vs === null ? '—' : signo(vs)}${vsPct === null ? '' : ' (' + (vsPct > 0 ? '+' : '') + vsPct.toFixed(0) + '%)'}</td></tr>`;
+  }).join('');
+  const negocia = sols.length ? `<div class="cierre-sub" style="margin-top:8px"><b>Historial de negociación:</b> ${sols.map(x => `T${x.turno} ${x.persona} (${x.lado}) · ${fecha(x.fecha)} · ${x.estado}`).join(' → ')}</div>` : '<div class="cierre-sub" style="margin-top:8px">Este proyecto no tiene solicitudes de tiempos registradas.</div>';
+  return `<table class="cierre-table"><thead><tr><th>Hito</th><th style="text-align:left">Fecha</th><th style="text-align:left">Responsable / detalle</th><th>Horas</th><th>Δ vs anterior</th><th>Ejecutadas</th><th>Ejecutadas − hito</th></tr></thead><tbody>${filas}</tbody></table>${negocia}
+    <div class="cierre-sub">Los reforecast se numeran por cada ajuste final aplicado. Las horas de un reforecast son el total del proyecto después de aplicarlo (solo disponible para los enviados desde esta versión de la app).</div>`;
 }
 function renderCierre() {
   const cont = document.getElementById('cierreContent');
@@ -1053,10 +1007,13 @@ function renderCierre() {
     </div>
 
     <div class="cierre-h3">Resultado por persona</div>
-    <table class="cierre-table"><thead><tr><th>Persona</th><th>Presupuestadas</th><th>Ejecutadas</th><th>Desviación h</th><th>Desviación %</th></tr></thead><tbody>
-      ${personas.map(n => { const v = porPersona[n]; const d = v.e - v.p; return `<tr><td>${n}</td><td>${f1(v.p)}</td><td>${f1(v.e)}</td><td>${signo(d)}</td><td>${v.p ? ((d / v.p) * 100 > 0 ? '+' : '') + ((d / v.p) * 100).toFixed(1) + '%' : '—'}</td></tr>`; }).join('')}
-      <tr class="tot"><td>Total</td><td>${f1(totP)}</td><td>${f1(totE)}</td><td>${signo(desv)}</td><td>${pct === null ? '—' : (pct > 0 ? '+' : '') + pct.toFixed(1) + '%'}</td></tr>
+    <table class="cierre-table"><thead><tr><th>Colaborador</th><th>Presupuestadas</th><th>Ejecutadas</th><th>Desviación h</th><th>Desviación %</th><th style="text-align:center">Estado</th></tr></thead><tbody>
+      ${personas.map(n => { const v = porPersona[n]; const d = v.e - v.p; const pl = desvPill(v.p, v.e); return `<tr><td>${n}</td><td>${f1(v.p)}</td><td>${f1(v.e)}</td><td class="${d > 0 ? 'cneg' : 'cpos'}">${signo(d)}</td><td>${v.p ? ((d / v.p) * 100 > 0 ? '+' : '') + ((d / v.p) * 100).toFixed(1) + '%' : '—'}</td><td style="text-align:center"><span class="cierre-pill" style="background:${pl.bg};color:${pl.fg}">${pl.label}</span></td></tr>`; }).join('')}
+      <tr class="tot"><td>Total proyecto</td><td>${f1(totP)}</td><td>${f1(totE)}</td><td class="${desv > 0 ? 'cneg' : 'cpos'}">${signo(desv)}</td><td>${pct === null ? '—' : (pct > 0 ? '+' : '') + pct.toFixed(1) + '%'}</td><td style="text-align:center"><span class="cierre-pill" style="background:${pill.bg};color:${pill.fg}">${pill.label}</span></td></tr>
     </tbody></table>
+
+    <div class="cierre-h3">Trazabilidad: horas vendidas → reforecast → horas ejecutadas</div>
+    ${trazabilidadHtml(proy, totP, totE, f1, signo)}
 
     <div class="cierre-h3">Resultado por trimestre</div>
     <table class="cierre-table"><thead><tr><th>Trimestre</th><th>Presupuestadas</th><th>Ejecutadas</th><th>Desviación h</th></tr></thead><tbody>

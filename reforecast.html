@@ -49,6 +49,10 @@
     .rf-input.changed { border-color: #f59e0b; background: #fffbeb; }
     .rf-input::-webkit-inner-spin-button, .rf-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
     .rf-input[type=number] { -moz-appearance: textfield; }
+    .rf-ptot { font-weight:700; text-align:center; background:#eef6f4; }
+    tr.rf-foot td { background:#eef6f4; font-weight:700; text-align:center; border-top:2px solid #003237; font-size:12px; }
+    tr.rf-foot td.rf-name { text-align:left; }
+    td.rf-capw.neg { color:#b91c1c; } td.rf-capw.low { color:#b45309; }
     .rf-free { font-size:9px; font-weight:600; margin-top:2px; color:#5b7379; white-space:nowrap; }
     .rf-free.neg { color:#b91c1c; }
     .rf-free.low { color:#b45309; }
@@ -438,7 +442,7 @@ function weeksForDisplay(equipoMatrix, threadHoras) {
   const ventana = full.slice(Math.max(0, curIdx - REFORECAST_WEEKS_BACK), curIdx + REFORECAST_WEEKS_FORWARD);
 
   const keys = new Set(ventana.map(w => w.key));
-  Object.keys(threadHoras || {}).forEach(k => keys.add(k.split('|')[1]));
+  Object.keys(threadHoras || {}).filter(k => !k.startsWith('_')).forEach(k => keys.add(k.split('|')[1]));
   semanasExtra.forEach(k => keys.add(k));
   return [...keys].map(parseWeekKeyLocal).sort((a, b) => a.monday - b.monday);
 }
@@ -613,7 +617,7 @@ function renderModificacion() {
   const thread = activeThreadFor(selectedProyecto);
   const threadHoras = thread ? JSON.parse(thread.horasJSON || '{}') : {};
   const enEquipo = new Set(Object.keys(equipoMatrix));
-  const personasHilo = new Set(Object.keys(threadHoras).map(k => k.split('|')[0]));
+  const personasHilo = new Set(Object.keys(threadHoras).filter(k => !k.startsWith('_')).map(k => k.split('|')[0]));
   personasHilo.forEach(p => { if (!enEquipo.has(p)) personasExtraRf.add(p); });
   const personas = [...new Set([...enEquipo, ...personasExtraRf])].sort();
   const weeks = weeksForDisplay(equipoMatrix, threadHoras);
@@ -652,49 +656,78 @@ function renderModificacion() {
   };
   const hoy = getWeekMonday(getCurrentIsoYearWeek().semana, getCurrentIsoYearWeek().año).getTime();
 
-  const thead = buildWeeksTheadHtml(weeks);
+  const thead = buildWeeksTheadHtml(weeks, 'Total');
   const tbody = personas.map(p => {
     const cap = capacidadHoras(p);
     const cells = weeks.map(w => {
       const val = valueFor(p, w.key);
       const otros = horasOtrosProyectos(p, w.key, equipoMatrix);
-      const free = cap - otros - val;
       const futura = w.monday >= hoy;
-      const freeHtml = futura ? `<div class="rf-free ${freeClass(free, cap)}" data-free-p="${escAttr(p)}" data-free-w="${w.key}" data-otros="${otros}" data-cap="${cap}" title="Capacidad ${fmt(cap)}h − ${fmt(otros)}h en otros proyectos − lo propuesto aquí">${freeLabel(free)}</div>` : '';
+      const cargaHtml = futura ? `<div class="rf-free" data-free-p="${escAttr(p)}" data-free-w="${w.key}" data-otros="${otros}" data-cap="${cap}" title="Carga ponderada de la persona con lo propuesto: (horas en otros proyectos + lo propuesto aquí) / (40 h × su % de capacidad)"></div>` : '';
       return canAct
-        ? `<td><input class="rf-input" type="number" min="0" step="1" inputmode="numeric" value="${val || ''}" data-persona="${escAttr(p)}" data-week="${w.key}" oninput="this.value = this.value.replace(/[^0-9]/g,''); updateLibres()" />${freeHtml}</td>`
-        : `<td class="rf-readonly">${fmt(val)}${freeHtml}</td>`;
+        ? `<td><input class="rf-input" type="number" min="0" step="1" inputmode="numeric" value="${val || ''}" data-persona="${escAttr(p)}" data-week="${w.key}" oninput="this.value = this.value.replace(/[^0-9]/g,''); updateCarga()" />${cargaHtml}</td>`
+        : `<td class="rf-readonly" data-ro-p="${escAttr(p)}" data-ro-w="${w.key}" data-ro-v="${val}">${fmt(val)}${cargaHtml}</td>`;
     }).join('');
     const rm = canAct && personasExtraRf.has(p) && !enEquipo.has(p)
       ? `<span class="rf-tag">NUEVA</span><button class="rf-rm" title="Quitar de la solicitud" onclick="quitarPersonaExtra('${escAttr(p)}')">✕</button>` : '';
-    return `<tr><td class="rf-name">${p}${rm}</td>${cells}</tr>`;
+    return `<tr><td class="rf-name">${p}${rm}</td>${cells}<td class="rf-ptot" data-ptot="${escAttr(p)}"><strong></strong></td></tr>`;
   }).join('');
-  table.innerHTML = thead + '<tbody>' + tbody + '</tbody>';
+  const tfoot = `<tr class="rf-foot"><td class="rf-name">Total equipo (h)</td>${weeks.map(w => `<td data-tw="${w.key}"></td>`).join('')}<td data-tw-all="1"></td></tr>
+    <tr class="rf-foot"><td class="rf-name" title="Suma de (horas en todos los proyectos) / suma de (40 h × capacidad) de las personas de la tabla, con lo propuesto">Capacidad ponderada equipo</td>${weeks.map(w => w.monday >= hoy ? `<td data-cw="${w.key}"></td>` : '<td></td>').join('')}<td></td></tr>`;
+  table.innerHTML = thead + '<tbody>' + tbody + tfoot + '</tbody>';
   renderSugerencias(canAct, personas, weeks, equipoMatrix);
-  updateLibres();
-
+  updateCarga();
   if (!canAct) { actions.innerHTML = ''; return; }
 
-  if (thread) {
-    actions.innerHTML = `
-      <button class="btn-primary" onclick="aprobarSolicitud()">✓ Aprobar estos valores</button>
-      <button class="btn-secondary" onclick="enviarContrapropuesta()">↩ Enviar contrapropuesta</button>`;
-  } else {
-    actions.innerHTML = `<button class="btn-primary" onclick="enviarSolicitudNueva()">Enviar solicitud</button>`;
-  }
+  actions.innerHTML = `
+    <button class="btn-primary" onclick="enviarAjusteFinal()" title="Es la solicitud final: aplica estos valores al presupuesto y cierra la negociación">✓ Enviar Ajuste</button>
+    <button class="btn-secondary" onclick="enviarContrapropuesta()" title="No es la final: se la devuelve a quien envió la solicitud para que responda">↩ Enviar Contrapropuesta</button>`;
 }
 
 // ── Sugerir personas ────────────────────────────────────────────────────────
-// Actualiza en vivo el "libre/sobre" de cada celda según lo digitado.
-function updateLibres() {
+// Actualiza en vivo totales y capacidad ponderada según lo digitado.
+function valorCelda(p, wk) {
+  const inp = document.querySelector(`#modTable .rf-input[data-persona="${CSS.escape(p)}"][data-week="${wk}"]`);
+  if (inp) return Number(inp.value) || 0;
+  const ro = document.querySelector(`#modTable td[data-ro-p="${CSS.escape(p)}"][data-ro-w="${wk}"]`);
+  return ro ? Number(ro.dataset.roV) || 0 : 0;
+}
+function updateCarga() {
+  const pct = n => Math.round(n * 100) + '%';
+  const semTot = {}, semOtros = {}, semCap = {};
+  let granTotal = 0;
+  document.querySelectorAll('#modTable [data-ptot]').forEach(td => {
+    const p = td.dataset.ptot;
+    let tot = 0;
+    document.querySelectorAll('#modTable .rf-input[data-persona], #modTable td[data-ro-p]').forEach(el => {
+      const persona = el.dataset.persona || el.dataset.roP;
+      if (persona !== p) return;
+      const wk = el.dataset.week || el.dataset.roW;
+      const v = el.tagName === 'INPUT' ? (Number(el.value) || 0) : (Number(el.dataset.roV) || 0);
+      tot += v; semTot[wk] = (semTot[wk] || 0) + v;
+    });
+    td.firstChild.textContent = fmt(tot);
+    granTotal += tot;
+  });
   document.querySelectorAll('#modTable .rf-free').forEach(el => {
-    const inp = document.querySelector(`#modTable .rf-input[data-persona="${CSS.escape(el.dataset.freeP)}"][data-week="${el.dataset.freeW}"]`);
-    const val = inp ? (Number(inp.value) || 0) : 0;
+    const p = el.dataset.freeP, wk = el.dataset.freeW;
+    const val = valorCelda(p, wk);
     const cap = Number(el.dataset.cap), otros = Number(el.dataset.otros);
-    const free = cap - otros - val;
-    el.textContent = freeLabel(free);
-    el.className = 'rf-free ' + freeClass(free, cap);
-    if (inp) inp.classList.toggle('over', free < 0 && val > 0);
+    const carga = cap > 0 ? (otros + val) / cap : ((otros + val) > 0 ? 9.99 : 0);
+    el.textContent = (otros + val) > 0 ? pct(carga) : '';
+    el.className = 'rf-free ' + (carga > 1 ? 'neg' : carga >= 0.85 ? 'low' : '');
+    const inp = document.querySelector(`#modTable .rf-input[data-persona="${CSS.escape(p)}"][data-week="${wk}"]`);
+    if (inp) inp.classList.toggle('over', carga > 1 && val > 0);
+    semOtros[wk] = (semOtros[wk] || 0) + otros + val;
+    semCap[wk] = (semCap[wk] || 0) + cap;
+  });
+  document.querySelectorAll('#modTable [data-tw]').forEach(td => { const v = semTot[td.dataset.tw] || 0; td.textContent = v ? fmt(v) : ''; });
+  const all = document.querySelector('#modTable [data-tw-all]'); if (all) all.textContent = fmt(granTotal);
+  document.querySelectorAll('#modTable [data-cw]').forEach(td => {
+    const c = semCap[td.dataset.cw] || 0, h = semOtros[td.dataset.cw] || 0;
+    const carga = c > 0 ? h / c : 0;
+    td.textContent = h > 0 ? pct(carga) : '';
+    td.className = 'rf-capw ' + (carga > 1 ? 'neg' : carga >= 0.85 ? 'low' : '');
   });
   updateSugerenciasAviso();
 }
@@ -715,25 +748,25 @@ function renderSugerencias(canAct, personas, weeks, equipoMatrix) {
     .filter(p => !enTabla.has(p) && !inactivasRf.has(p) && capacidadHoras(p) > 0)
     .map(p => {
       const cap = capacidadHoras(p);
-      const libres = fut.map(w => cap - (totalesPersonaSemana[p + '|' + w.key] || 0));
-      const prom = libres.length ? libres.reduce((a, b) => a + b, 0) / libres.length : cap;
-      return { p, prom, min: libres.length ? Math.min(...libres) : cap };
+      const cargas = fut.map(w => (totalesPersonaSemana[p + '|' + w.key] || 0) / cap);
+      const prom = cargas.length ? cargas.reduce((a, b) => a + b, 0) / cargas.length : 0;
+      return { p, prom };
     })
-    .sort((a, b) => b.prom - a.prom);
-  const top = cands.filter(c => c.prom > 0).slice(0, 5);
+    .sort((a, b) => a.prom - b.prom);
+  const top = cands.filter(c => c.prom < 0.85).slice(0, 5);
   const resto = cands.filter(c => !top.includes(c)).sort((a, b) => a.p.localeCompare(b.p));
   box.innerHTML = `<div class="sug-box" id="sugInner">
-      <div class="sug-title" id="sugTitle">👥 ¿Falta capacidad? Sugiere personas para esta solicitud</div>
+      <div class="sug-title" id="sugTitle">👥 Sugerir personas para esta solicitud</div>
       <div id="sugAviso" style="margin-bottom:6px"></div>
-      <div>${top.length ? top.map(c => `<span class="sug-chip" onclick="agregarPersonaExtra('${escAttr(c.p)}')" title="Horas libres promedio por semana en las semanas visibles (capacidad − horas en todos sus proyectos)">＋ ${c.p} <small>libre prom. ${fmt(Math.round(c.prom))}h/sem</small></span>`).join('') : '<span style="color:#6b8a91">Nadie tiene holgura promedio en las semanas visibles.</span>'}</div>
+      <div>${top.length ? top.map(c => `<span class="sug-chip" onclick="agregarPersonaExtra('${escAttr(c.p)}')" title="Capacidad ponderada promedio en las semanas visibles: horas en todos sus proyectos / (40 h × su % de capacidad)">＋ ${c.p} <small>capacidad ${Math.round(c.prom * 100)}%</small></span>`).join('') : '<span style="color:#6b8a91">Nadie tiene holgura (por debajo de 85%) en las semanas visibles.</span>'}</div>
       <div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="sugSel" style="padding:6px 10px;border:1.5px solid #d4dfe2;border-radius:7px;font-family:inherit;font-size:12px;min-width:220px">
           <option value="">Otra persona del equipo…</option>
-          ${top.concat(resto).map(c => `<option value="${escAttr(c.p)}">${c.p} — libre prom. ${fmt(Math.round(c.prom))}h/sem</option>`).join('')}
+          ${top.concat(resto).map(c => `<option value="${escAttr(c.p)}">${c.p} — capacidad ${Math.round(c.prom * 100)}%</option>`).join('')}
         </select>
         <button class="btn-secondary" onclick="agregarPersonaExtra(document.getElementById('sugSel').value)">＋ Agregar</button>
       </div>
-      <div style="margin-top:6px;color:#6b8a91">La persona agregada aparece como fila nueva; las horas que le propongas se aplican al presupuesto solo cuando se apruebe la solicitud. El "libre" cuenta sus horas en todos los proyectos sobre 40 h (ajustadas por su capacidad).</div>
+      <div style="margin-top:6px;color:#6b8a91">La persona agregada aparece como fila nueva; las horas que le propongas se aplican al presupuesto solo cuando se apruebe la solicitud. La capacidad ponderada cuenta sus horas en todos los proyectos sobre 40 h × su % de capacidad.</div>
     </div>`;
   updateSugerenciasAviso();
 }
@@ -747,8 +780,8 @@ function updateSugerenciasAviso() {
   const nombres = Object.keys(sobre);
   inner.classList.toggle('warn', nombres.length > 0);
   aviso.innerHTML = nombres.length
-    ? `⚠️ <b>Sin capacidad suficiente:</b> ${nombres.map(n => `${n} (${sobre[n]} sem)`).join(', ')}. Considera repartir horas con alguien más.`
-    : '<span style="color:#166534">✓ Con lo propuesto, nadie del equipo supera su capacidad.</span>';
+    ? `⚠️ Por encima del 100% de capacidad: ${nombres.map(n => `${n} (${sobre[n]} sem)`).join(', ')}.`
+    : '<span style="color:#166534">✓ Con lo propuesto, nadie supera su capacidad.</span>';
 }
 
 function agregarPersonaExtra(p) {
@@ -816,18 +849,39 @@ function myDefaultSide() {
   return mySides.includes('Equipos') ? 'Equipos' : (mySides[0] || 'Equipos');
 }
 
-async function submitTurn(lado, horasMap) {
+// Total del proyecto (todas las personas y semanas) si se aplicaran estos valores
+function totalProyectoConHoras(horasMap) {
+  const base = {};
+  allData.filter(x => x.proyecto === selectedProyecto).forEach(x => {
+    const k = x.colaborador + '|' + semanaAnioKey(x.semana, x.año);
+    base[k] = (base[k] || 0) + x.horaspresupuestadas;
+  });
+  Object.entries(horasMap).forEach(([k, v]) => { if (!k.startsWith('_')) base[k] = v; });
+  return Object.values(base).reduce((a, b) => a + b, 0);
+}
+
+// Lado con el que actúo en este turno: si respondo, el contrario a quien propuso
+function ladoDeTurno(thread) {
+  if (thread) { const next = thread.proponeLado === 'Equipos' ? 'Ops' : 'Equipos'; if (mySides.includes(next)) return next; }
+  return myDefaultSide();
+}
+
+// estado = 'Pendiente' (contrapropuesta: devuelve el turno a quien envió) o 'Aprobada' (ajuste final: aplica)
+async function submitTurn(estado, horasMap) {
   const thread = activeThreadFor(selectedProyecto);
   const hiloId = thread ? thread.hiloId : `${selectedProyecto}-${Date.now()}`;
   const turno = thread ? thread.turno + 1 : 1;
   const now = new Date().toISOString();
+  const lado = ladoDeTurno(thread);
 
   if (!solHeaders.length || solColIdx['hiloid'] === undefined) {
     showToast('⚠️ Falta configurar la pestaña Solicitudes_Tiempo (encabezados).', 'error');
     return;
   }
+  const payload = { ...horasMap, _totalProyecto: totalProyectoConHoras(horasMap), _final: estado === 'Aprobada' ? 1 : 0 };
 
   try {
+    if (estado === 'Aprobada') await applyHorasToDashboard(horasMap, selectedProyecto);
     if (thread) await updateSolicitudEstado(thread._row, 'Superada');
     const row = new Array(solHeaders.length).fill('');
     row[solColIdx['hiloid']] = hiloId;
@@ -836,16 +890,15 @@ async function submitTurn(lado, horasMap) {
     row[solColIdx['proponepersona']] = mySession.persona;
     row[solColIdx['proponelado']] = lado;
     row[solColIdx['fecha']] = now;
-    row[solColIdx['horasjson']] = JSON.stringify(horasMap);
-    row[solColIdx['estado']] = 'Pendiente';
+    row[solColIdx['horasjson']] = JSON.stringify(payload);
+    row[solColIdx['estado']] = estado;
     await gapi.client.sheets.spreadsheets.values.append({
       spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: `${SHEET_SOLICITUDES}!A1`,
       valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS',
       resource: { values: [row] },
     });
-    showToast('✓ Enviado — queda pendiente de respuesta', 'success');
-    await loadSolicitudes();
-    renderPendingPanel();
+    showToast(estado === 'Aprobada' ? '✓ Ajuste aplicado al presupuesto' : '✓ Contrapropuesta enviada — queda pendiente de respuesta', 'success');
+    await loadAll();
     onProyectoChange();
   } catch (err) {
     console.error(err);
@@ -853,8 +906,11 @@ async function submitTurn(lado, horasMap) {
   }
 }
 
-function enviarSolicitudNueva() { return submitTurn(myDefaultSide(), collectInputValues()); }
-function enviarContrapropuesta() { return submitTurn(myDefaultSide(), collectInputValues()); }
+function enviarContrapropuesta() { return submitTurn('Pendiente', collectInputValues()); }
+async function enviarAjusteFinal() {
+  if (!confirm('Es la solicitud FINAL: estos valores se aplicarán al presupuesto real (horas presupuestadas) y la negociación se cierra. ¿Continuar?')) return;
+  return submitTurn('Aprobada', collectInputValues());
+}
 
 async function updateSolicitudEstado(rowIndex, estado) {
   await gapi.client.sheets.spreadsheets.values.update({
@@ -890,6 +946,7 @@ async function applyHorasToDashboard(horasMap, proyecto) {
   const newRows = [];
 
   Object.entries(horasMap).forEach(([key, horas]) => {
+    if (key.startsWith('_')) return; // metadatos del hilo (_totalProyecto, _final)
     const [persona, weekKey] = key.split('|');
     const { semana, año } = parseWeekKeyLocal(weekKey);
     const existing = allData.find(r => r.colaborador === persona && r.proyecto === proyecto && r.semana === semana && r.año === año);

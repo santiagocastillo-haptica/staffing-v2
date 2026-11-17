@@ -233,7 +233,8 @@
       <div style="display:flex;gap:8px">
         <button class="btn-secondary" id="btnToggleInactivos" onclick="toggleHideInactivos()">👤 Ocultar personas inactivas</button>
         <button class="btn-secondary" id="btnToggleFinished" onclick="toggleHideFinished()">👁 Ocultar finalizados</button>
-        <button class="btn-secondary" onclick="openProjectsMgmt()">🗂 Gestionar proyectos</button>
+        <button class="btn-secondary" onclick="openCerrarProyecto()">🏁 Cerrar proyecto</button>
+          <button class="btn-secondary" onclick="openProjectsMgmt()">🗂 Gestionar proyectos</button>
         <button class="btn-secondary" onclick="openPersonasMgmt()">👥 Gestionar personas</button>
         <button class="btn-secondary" onclick="openImportModal()">📥 Importar desde Staffing</button>
         <button class="btn-primary" onclick="openProjectModal()">🚀 Nuevo proyecto</button>
@@ -312,6 +313,20 @@
     <div class="catalog-list" id="personasList"></div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closePersonasMgmt()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal cerrar proyecto -->
+<div class="modal-overlay" id="cerrarProyectoOverlay">
+  <div class="modal">
+    <h3>🏁 Cerrar proyecto</h3>
+    <p style="font-size:12px;color:#5b7379;margin:0 0 10px">El proyecto queda como finalizado para todo el equipo y se abre su informe de cierre (horas vendidas, reforecast y ejecutadas) en una pestaña nueva.</p>
+    <input type="text" id="cerrarProyectoInput" list="cerrarProyectoList" placeholder="Escribe o elige el proyecto…" autocomplete="off" style="width:100%" />
+    <datalist id="cerrarProyectoList"></datalist>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeCerrarProyecto()">Cancelar</button>
+      <button class="btn-primary" id="btnConfirmarCierre" onclick="confirmarCerrarProyecto()">Cerrar y ver informe</button>
     </div>
   </div>
 </div>
@@ -650,6 +665,38 @@ async function togglePersonaActiva(nombre, isActive) {
   }
 }
 
+// ── Cerrar proyecto + informe de cierre ─────────────────────────────────────
+function openCerrarProyecto() {
+  const abiertos = allKnownProjectNames().filter(n => proyectoEstado[n] !== 'Cerrado');
+  const dl = document.getElementById('cerrarProyectoList');
+  dl.innerHTML = sortProjects(abiertos).map(n => `<option value="${escAttr(n)}">`).join('');
+  document.getElementById('cerrarProyectoInput').value = filtroProyecto && abiertos.includes(filtroProyecto) ? filtroProyecto : '';
+  document.getElementById('cerrarProyectoOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('cerrarProyectoInput').focus(), 50);
+}
+function closeCerrarProyecto() { document.getElementById('cerrarProyectoOverlay').classList.remove('open'); }
+function urlInformeCierre(name) { return 'staffing-matrix.html?cierre=' + encodeURIComponent(name); }
+async function confirmarCerrarProyecto() {
+  const name = document.getElementById('cerrarProyectoInput').value.trim();
+  if (!allKnownProjectNames().includes(name)) { alert('Elige un proyecto de la lista.'); return; }
+  if (proyectoEstado[name] === 'Cerrado') { alert(`"${name}" ya está cerrado.`); return; }
+  if (!confirm(`¿Cerrar "${name}"? Quedará como finalizado para todos y se abrirá su informe de cierre.`)) return;
+  const btn = document.getElementById('btnConfirmarCierre'); btn.disabled = true;
+  try {
+    proyectoEstado[name] = 'Cerrado';
+    await saveCatalogEstado(name, 'Cerrado');
+    renderMatrix();
+    closeCerrarProyecto();
+    showToast('✓ Proyecto cerrado — abriendo informe de cierre', 'success');
+    window.open(urlInformeCierre(name), '_blank');
+  } catch (err) {
+    console.error(err);
+    proyectoEstado[name] = 'Activo';
+    renderMatrix();
+    showToast('⚠️ No se pudo cerrar: ' + errMsg(err), 'error');
+  } finally { btn.disabled = false; }
+}
+
 function openProjectsMgmt() {
   renderCatalogList();
   document.getElementById('projectsMgmtOverlay').classList.add('open');
@@ -671,6 +718,7 @@ function renderCatalogList() {
         <span class="slider"></span>
       </label>
       <span class="catalog-status" style="color:${activo ? '#059669' : '#dc2626'}">${activo ? 'Activo' : 'Cerrado'}</span>
+      <a href="${urlInformeCierre(name)}" target="_blank" style="font-size:11px;margin-left:8px;color:#003237;font-weight:600" title="Abrir el informe de cierre de este proyecto">📋 Informe</a>
     </div>`;
   }).join('');
 }
