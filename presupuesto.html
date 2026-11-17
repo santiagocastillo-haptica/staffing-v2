@@ -697,6 +697,91 @@ async function confirmarCerrarProyecto() {
   } finally { btn.disabled = false; }
 }
 
+// ── Editar / eliminar códigos de proyecto (solo administradores de códigos) ──
+let mySessionPp = null;
+const ADMIN_CODIGOS_EMAILS = ['santiago.castillo@haptica.co'];
+const ADMIN_CODIGOS_PERSONAS = ['santiago castillo', 'maria camila venegas'];
+const sinTildes = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+function puedeAdministrarCodigos() {
+  if (!mySessionPp) return false;
+  return ADMIN_CODIGOS_EMAILS.includes(String(mySessionPp.email || '').toLowerCase())
+    || ADMIN_CODIGOS_PERSONAS.includes(sinTildes(mySessionPp.persona));
+}
+function hayCambiosSinGuardar() { return Object.values(dirtyMatrix).some(m => Object.values(m).some(w => Object.keys(w).length)); }
+
+async function sheetIdsPp() {
+  const res = await gapi.client.sheets.spreadsheets.get({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, fields: 'sheets.properties(sheetId,title)' });
+  const out = {};
+  (res.result.sheets || []).forEach(s => { out[s.properties.title] = s.properties.sheetId; });
+  return out;
+}
+// Filas (1-based) de una pestaña donde la columna "Proyecto" es exactamente el nombre dado
+async function filasDeProyecto(hoja, nombre) {
+  const res = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: hoja });
+  const rows = res.result.values || [];
+  if (rows.length < 2) return { filas: [], colLetra: 'A' };
+  const h = rows[0].map(x => String(x).trim().toLowerCase());
+  const iP = h.indexOf('proyecto');
+  if (iP === -1) return { filas: [], colLetra: 'A' };
+  const filas = [];
+  rows.slice(1).forEach((r, i) => { if ((r[iP] || '').trim() === nombre) filas.push(i + 2); });
+  return { filas, colLetra: colToLetter(iP) };
+}
+
+async function renombrarProyecto(viejo) {
+  if (!puedeAdministrarCodigos()) return;
+  if (hayCambiosSinGuardar()) { alert('Tienes cambios sin guardar. Guárdalos o descártalos antes de renombrar un código.'); return; }
+  const nuevo = (prompt(`Nuevo código para "${viejo}":`, viejo) || '').trim();
+  if (!nuevo || nuevo === viejo) return;
+  if (allKnownProjectNames().includes(nuevo)) { alert(`Ya existe un proyecto llamado "${nuevo}".`); return; }
+  try {
+    const [dd, sol, cat] = await Promise.all([filasDeProyecto(SHEET_DATA, viejo), filasDeProyecto(SHEET_SOLICITUDES, viejo), filasDeProyecto(SHEET_PROYECTOS, viejo)]);
+    if (!confirm(`Renombrar "${viejo}" → "${nuevo}"\n\nSe actualizará en: Proyectos (${cat.filas.length} fila), Dashboard_Data (${dd.filas.length} filas) y Solicitudes_Tiempo (${sol.filas.length} filas).\n\n¿Continuar?`)) return;
+    const data = [];
+    dd.filas.forEach(f => data.push({ range: `${SHEET_DATA}!${dd.colLetra}${f}`, values: [[nuevo]] }));
+    sol.filas.forEach(f => data.push({ range: `${SHEET_SOLICITUDES}!${sol.colLetra}${f}`, values: [[nuevo]] }));
+    cat.filas.forEach(f => data.push({ range: `${SHEET_PROYECTOS}!${cat.colLetra}${f}`, values: [[nuevo]] }));
+    if (data.length) {
+      await gapi.client.sheets.spreadsheets.values.batchUpdate({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, resource: { valueInputOption: 'RAW', data } });
+    }
+    showToast(`✓ "${viejo}" ahora se llama "${nuevo}"`, 'success');
+    await loadData();
+    renderCatalogList();
+  } catch (err) {
+    console.error(err);
+    showToast('⚠️ No se pudo renombrar: ' + errMsg(err), 'error');
+  }
+}
+
+async function eliminarProyecto(nombre) {
+  if (!puedeAdministrarCodigos()) return;
+  if (hayCambiosSinGuardar()) { alert('Tienes cambios sin guardar. Guárdalos o descártalos antes de eliminar un código.'); return; }
+  try {
+    const [dd, sol, cat] = await Promise.all([filasDeProyecto(SHEET_DATA, nombre), filasDeProyecto(SHEET_SOLICITUDES, nombre), filasDeProyecto(SHEET_PROYECTOS, nombre)]);
+    const escrito = prompt(`ELIMINAR "${nombre}" — no se puede deshacer.\n\nSe borrarán ${dd.filas.length} filas de Dashboard_Data (horas presupuestadas y ejecutadas), ${sol.filas.length} de Solicitudes_Tiempo y ${cat.filas.length} del catálogo Proyectos.\n\nPara confirmar, escribe el código exacto:`);
+    if (escrito === null) return;
+    if (escrito.trim() !== nombre) { alert('El código no coincide. No se eliminó nada.'); return; }
+    const ids = await sheetIdsPp();
+    const requests = [];
+    const borrar = (hoja, filas) => {
+      if (!ids[hoja] && ids[hoja] !== 0) return;
+      [...filas].sort((a, b) => b - a).forEach(f => requests.push({ deleteDimension: { range: { sheetId: ids[hoja], dimension: 'ROWS', startIndex: f - 1, endIndex: f } } }));
+    };
+    // Cada pestaña se borra de abajo hacia arriba para que los índices no se corran
+    borrar(SHEET_DATA, dd.filas); borrar(SHEET_SOLICITUDES, sol.filas); borrar(SHEET_PROYECTOS, cat.filas);
+    if (requests.length) {
+      await gapi.client.sheets.spreadsheets.batchUpdate({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, resource: { requests } });
+    }
+    showToast(`✓ "${nombre}" eliminado`, 'success');
+    delete proyectoEstado[nombre];
+    await loadData();
+    renderCatalogList();
+  } catch (err) {
+    console.error(err);
+    showToast('⚠️ No se pudo eliminar: ' + errMsg(err), 'error');
+  }
+}
+
 function openProjectsMgmt() {
   renderCatalogList();
   document.getElementById('projectsMgmtOverlay').classList.add('open');
@@ -718,7 +803,9 @@ function renderCatalogList() {
         <span class="slider"></span>
       </label>
       <span class="catalog-status" style="color:${activo ? '#059669' : '#dc2626'}">${activo ? 'Activo' : 'Cerrado'}</span>
-      <a href="${urlInformeCierre(name)}" target="_blank" style="font-size:11px;margin-left:8px;color:#003237;font-weight:600" title="Abrir el informe de cierre de este proyecto">📋 Informe</a>
+      <a href="${urlInformeCierre(name)}" target="_blank" style="font-size:11px;margin-left:8px;color:#003237;font-weight:600" title="Abrir el informe de cierre de este proyecto">📋 Informe</a>${puedeAdministrarCodigos() ? `
+      <button class="btn-secondary" style="padding:2px 8px;font-size:11px" onclick="renombrarProyecto('${escAttr(name)}')" title="Cambiar el código en todas las hojas">✎ Renombrar</button>
+      <button class="btn-secondary" style="padding:2px 8px;font-size:11px;color:#b91c1c;border-color:#fca5a5" onclick="eliminarProyecto('${escAttr(name)}')" title="Eliminar el código y sus horas">🗑 Eliminar</button>` : ''}
     </div>`;
   }).join('');
 }
@@ -928,17 +1015,17 @@ function onCellChange(input) {
   updateDirtyUI();
 }
 
+function personWeekHours(col, key) {
+  return Object.keys(matrix[col] || {}).reduce((sum, proy) => {
+    const dirty = dirtyMatrix[col] && dirtyMatrix[col][proy] && dirtyMatrix[col][proy][key];
+    const cell = dirty !== undefined && dirty !== null
+      ? dirty.hours
+      : (matrix[col][proy] && matrix[col][proy][key] ? matrix[col][proy][key].hours : 0);
+    return sum + cell;
+  }, 0);
+}
+
 function refreshPersonRow(col) {
-  const rows = document.querySelectorAll(`.row-project[data-col="${escAttr(col)}"]`);
-  const inputs = [];
-  rows.forEach(r => r.querySelectorAll('.hrs-input').forEach(i => inputs.push(i)));
-
-  const byWeek = {};
-  inputs.forEach(inp => {
-    const key = inp.dataset.week;
-    byWeek[key] = (byWeek[key] || 0) + (Number(inp.value) || 0);
-  });
-
   const personRows = document.querySelectorAll('.row-person');
   personRows.forEach(pr => {
     const nameCell = pr.querySelector('.col-name');
@@ -946,7 +1033,7 @@ function refreshPersonRow(col) {
     const cells = pr.querySelectorAll('td:not(.col-name)');
     cells.forEach((cell, i) => {
       const w   = weekRange[i];
-      const hrs = byWeek[w.key] || 0;
+      const hrs = personWeekHours(col, w.key);
       const cap = 40;
       const pct = cap > 0 ? hrs / cap : (hrs > 0 ? 1 : null);
       cell.innerHTML = hrs > 0 ? `<span class="pct-cell ${pctClass(pct)}">${fmtPct(pct)}</span>` : '';
@@ -1521,6 +1608,7 @@ document.getElementById('filterDesdeEdit').value = getDesde();
 HapticaAuth.init({
   requiredView: 'manual-edit',
   onReady: (session) => {
+    mySessionPp = session;
     HapticaNav.render('navContainer', { ...session, currentView: 'manual-edit' });
     loadData();
   }
