@@ -236,6 +236,7 @@
         <button class="btn-secondary" onclick="openCerrarProyecto()">🏁 Cerrar proyecto</button>
           <button class="btn-secondary" onclick="openProjectsMgmt()">🗂 Gestionar proyectos</button>
         <button class="btn-secondary" onclick="openPersonasMgmt()">👥 Gestionar personas</button>
+        <button class="btn-secondary" id="btnIncluirPersona" style="display:none" onclick="incluirPersona()" title="Agrega una persona a la matriz aunque todavía no esté en Roles_Usuarios">➕ Incluir persona</button>
         <button class="btn-secondary" onclick="openImportModal()">📥 Importar desde Staffing</button>
         <button class="btn-primary" onclick="openProjectModal()">🚀 Nuevo proyecto</button>
         <button class="btn-secondary" id="btnDiscard" onclick="discardChanges()" style="display:none">Descartar</button>
@@ -272,10 +273,9 @@
       <div class="modal-field"><label>Código</label><input type="text" id="pmCodigo" placeholder="Ej: TELMEX-02" autocomplete="off" /></div>
       <div class="modal-field"><label>Conocimiento de Equipo Háptica</label><input type="text" id="pmConocimiento" autocomplete="off" /></div>
       <div class="modal-field"><label>Madurez del Cliente</label><input type="text" id="pmMadurez" autocomplete="off" /></div>
-      <div class="modal-field"><label>Estado</label><input type="text" id="pmEstado" autocomplete="off" /></div>
-      <div class="modal-field"><label>Metodología</label><select id="pmMetodologia"></select></div>
-      <div class="modal-field"><label>Producto</label><input type="text" id="pmProducto" autocomplete="off" /></div>
-      <div class="modal-field"><label>Industria</label><select id="pmIndustria"></select></div>
+      <div class="modal-field"><label>Producto</label><select id="pmProducto"></select></div>
+      <div class="modal-field"><label>Industria</label><select id="pmIndustria" onchange="onIndustriaChange()"></select>
+        <input type="text" id="pmIndustriaOtra" placeholder="¿Cuál industria?" autocomplete="off" style="display:none;margin-top:6px" /></div>
       <div class="modal-field"><label>Duración (semanas)</label><input type="number" id="pmDuracion" min="1" step="1" value="1" /></div>
       <div class="modal-field"><label>Semana de inicio</label><select id="pmSemanaInicio"></select></div>
     </div>
@@ -782,6 +782,28 @@ async function eliminarProyecto(nombre) {
   }
 }
 
+// ── Incluir persona que aún no está en el Data Master ───────────────────────
+// Solo vive en la matriz: queda guardada en cuanto se guarden horas para ella en Dashboard_Data.
+// Agregarla a Roles_Usuarios (rol, capacidad, activo) se hace después en el Data Master.
+let personasProvisionales = new Set();
+function incluirPersona() {
+  if (!puedeAdministrarCodigos()) return;
+  const nombre = (prompt('Nombre completo de la persona a incluir (tal como la agregarás al Data Master):') || '').trim().replace(/\s+/g, ' ');
+  if (!nombre) return;
+  const existente = Object.keys(matrix).find(n => sinTildes(n) === sinTildes(nombre));
+  if (existente) {
+    alert(`"${existente}" ya está en la matriz.`);
+    return;
+  }
+  const normal = normalizaColaborador(nombre);
+  matrix[normal] = {};
+  personasProvisionales.add(normal);
+  personasActivas.add(normal);
+  populatePersonaFilter();
+  renderMatrix();
+  showToast(`✓ ${normal} incluida — asígnale proyectos con "＋ agregar proyecto" y guarda los cambios`, 'success');
+}
+
 function openProjectsMgmt() {
   renderCatalogList();
   document.getElementById('projectsMgmtOverlay').classList.add('open');
@@ -921,10 +943,10 @@ function renderMatrix() {
     if (filtroProyecto) {
       proyectos = proyectos.filter(proy => proy === filtroProyecto || proyectosRecienAgregados.has(col + '||' + proy));
     }
-    if ((hideFinished || filtroProyecto) && !proyectos.length) return; // nadie que mostrar de esta persona
+    if ((hideFinished || filtroProyecto) && !proyectos.length && !personasProvisionales.has(col)) return; // nadie que mostrar de esta persona
 
     tbody += `<tr class="row-person">`;
-    tbody += `<td class="col-name">${col}</td>`;
+    tbody += `<td class="col-name">${col}${personasProvisionales.has(col) && !Object.keys(matrix[col]).some(pr => projectHasAnyHours(col, pr)) ? ' <span style="font-size:9px;background:#FA4616;color:#fff;border-radius:4px;padding:1px 5px;font-weight:700;vertical-align:middle" title="Aún no está en Roles_Usuarios: se conserva al guardar horas para ella">NUEVA</span>' : ''}</td>`;
     weekRange.forEach(w => {
       const totalHrs = Object.keys(matrix[col]).reduce((sum, proy) => {
         const cell = (dirtyMatrix[col] && dirtyMatrix[col][proy] && dirtyMatrix[col][proy][w.key] !== undefined)
@@ -1458,11 +1480,25 @@ function suggestForRole(role, projectWeeks, horasTotal, metodologia, industria) 
     .sort((a, b) => a.roleRank - b.roleRank || a.metRank - b.metRank || a.indRank - b.indRank);
 }
 
+const PRODUCTOS = ['Consultoría', 'Formación', 'Taller'];
+function onIndustriaChange() {
+  const otro = document.getElementById('pmIndustria').value === '__otro__';
+  const inp = document.getElementById('pmIndustriaOtra');
+  inp.style.display = otro ? '' : 'none';
+  if (otro) inp.focus(); else inp.value = '';
+}
+// Industria elegida (si es "Otro", el texto escrito)
+function industriaElegida() {
+  const v = document.getElementById('pmIndustria').value;
+  return v === '__otro__' ? document.getElementById('pmIndustriaOtra').value.trim() : v;
+}
+
 function populateProjectFormStatics() {
-  document.getElementById('pmMetodologia').innerHTML =
-    '<option value="">—</option>' + METODOLOGIAS.map(m => `<option value="${escAttr(m)}">${m}</option>`).join('');
+  document.getElementById('pmProducto').innerHTML =
+    '<option value="">—</option>' + PRODUCTOS.map(m => `<option value="${escAttr(m)}">${m}</option>`).join('');
   document.getElementById('pmIndustria').innerHTML =
-    '<option value="">—</option>' + INDUSTRIAS.map(i => `<option value="${escAttr(i)}">${i}</option>`).join('');
+    '<option value="">—</option>' + INDUSTRIAS.map(i => `<option value="${escAttr(i)}">${i}</option>`).join('') + '<option value="__otro__">Otro…</option>';
+  document.getElementById('pmIndustriaOtra').style.display = 'none';
 
   const cur = getCurrentIsoYearWeek();
   const sel = document.getElementById('pmSemanaInicio');
@@ -1475,7 +1511,7 @@ function populateProjectFormStatics() {
 
 function openProjectModal() {
   populateProjectFormStatics();
-  ['pmCliente', 'pmCodigo', 'pmConocimiento', 'pmMadurez', 'pmEstado', 'pmProducto'].forEach(id => {
+  ['pmCliente', 'pmCodigo', 'pmConocimiento', 'pmMadurez', 'pmProducto', 'pmIndustriaOtra'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('pmDuracion').value = 1;
@@ -1499,8 +1535,8 @@ async function suggestTeam(evt) {
   const startIdx = weekRange.findIndex(w => w.semana === semIni && w.año === anioIni);
   const duracion = Math.max(1, Number(document.getElementById('pmDuracion').value) || 1);
   const projectWeeks = weekRange.slice(startIdx, startIdx + duracion);
-  const metodologia = document.getElementById('pmMetodologia').value;
-  const industria   = document.getElementById('pmIndustria').value;
+  const metodologia = ''; // ya no se pide metodología; el producto no afecta la sugerencia de equipo
+  const industria   = industriaElegida();
 
   const btn = evt.target;
   btn.disabled = true;
@@ -1609,6 +1645,7 @@ HapticaAuth.init({
   requiredView: 'manual-edit',
   onReady: (session) => {
     mySessionPp = session;
+    if (puedeAdministrarCodigos()) document.getElementById('btnIncluirPersona').style.display = '';
     HapticaNav.render('navContainer', { ...session, currentView: 'manual-edit' });
     loadData();
   }
