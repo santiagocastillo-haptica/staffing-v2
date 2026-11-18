@@ -293,6 +293,7 @@
       <button class="btn-secondary" onclick="closeProjectModal()">Cancelar</button>
       <span style="font-size:11px;color:#9ca3af">Sugerencia de equipo deshabilitada temporalmente — ajustando reglas.</span>
       <button class="btn-primary" id="btnSuggestTeam" onclick="suggestTeam(event)" disabled title="Deshabilitado temporalmente">Sugerir equipo →</button>
+      <button class="btn-primary" id="btnCrearProyecto" onclick="crearProyecto()">✓ Crear proyecto</button>
     </div>
 
     <div id="pmSuggestions" style="display:none">
@@ -1520,6 +1521,66 @@ function openProjectModal() {
   pendingAssignments = null;
   pmMeta = null;
   document.getElementById('projectModalOverlay').classList.add('open');
+}
+
+// Crea el proyecto sin asignar equipo: lo agrega al catálogo (Activo) y registra las horas
+// vendidas en Dimensionamiento_Venta. Las personas se asignan después con "＋ agregar proyecto".
+async function crearProyecto() {
+  const codigo = document.getElementById('pmCodigo').value.trim();
+  if (!codigo) { alert('Ingresa el código del proyecto.'); return; }
+  if (allKnownProjectNames().some(n => n.toLowerCase() === codigo.toLowerCase())) { alert(`"${codigo}" ya existe en el catálogo.`); return; }
+  const industria = industriaElegida();
+  if (document.getElementById('pmIndustria').value === '__otro__' && !industria) { alert('Escribe cuál es la industria o elige otra opción.'); return; }
+
+  const valores = {
+    'código': codigo,
+    'cliente': document.getElementById('pmCliente').value.trim(),
+    'conocimiento de equipo háptica': document.getElementById('pmConocimiento').value.trim(),
+    'madurez del cliente': document.getElementById('pmMadurez').value.trim(),
+    'producto': document.getElementById('pmProducto').value,
+    'industria': industria,
+    'duración (semanas)': document.getElementById('pmDuracion').value,
+    'duración': document.getElementById('pmDuracion').value,
+    'semana de inicio': document.getElementById('pmSemanaInicio').value,
+  };
+  STAFFING_ROLES.forEach(role => { valores['horas vendidas ' + role.toLowerCase()] = Number(document.getElementById(ROLE_FIELD_IDS[role]).value) || 0; });
+
+  const btn = document.getElementById('btnCrearProyecto');
+  btn.disabled = true; btn.textContent = 'Creando…';
+  try {
+    proyectoEstado[codigo] = 'Activo';
+    await saveCatalogEstado(codigo, 'Activo');
+    let ventaOk = true;
+    try { await registrarVentaProyecto(codigo, valores); } catch (e) { console.error(e); ventaOk = false; }
+    closeProjectModal();
+    populateProyectoFilter();
+    renderMatrix();
+    showToast(ventaOk
+      ? `✓ Proyecto ${codigo} creado — asígnale personas con "＋ agregar proyecto"`
+      : `✓ Proyecto ${codigo} creado, pero no se pudieron guardar las horas vendidas en Dimensionamiento_Venta`, ventaOk ? 'success' : 'error');
+  } catch (err) {
+    console.error(err);
+    delete proyectoEstado[codigo];
+    showToast('⚠️ No se pudo crear el proyecto: ' + errMsg(err), 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '✓ Crear proyecto';
+  }
+}
+
+// Agrega una fila a Dimensionamiento_Venta usando solo las columnas que ya existen allí.
+async function registrarVentaProyecto(codigo, valores) {
+  const res = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: SHEET_VENTA });
+  const rows = res.result.values || [];
+  if (!rows.length) return; // sin encabezados: no se inventa la estructura
+  const headers = rows[0].map(h => String(h).trim());
+  const iCodigo = headers.findIndex(h => h.toLowerCase() === 'código');
+  if (iCodigo === -1) return;
+  if (rows.slice(1).some(r => (r[iCodigo] || '').trim().toLowerCase() === codigo.toLowerCase())) return; // ya está
+  const fila = headers.map(h => { const v = valores[h.toLowerCase()]; return v === undefined ? '' : v; });
+  await gapi.client.sheets.spreadsheets.values.append({
+    spreadsheetId: HapticaAuth.SPREADSHEET_ID, range: `${SHEET_VENTA}!A1`,
+    valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS', resource: { values: [fila] },
+  });
 }
 
 function closeProjectModal() {
