@@ -161,6 +161,8 @@
         <span id="escenarioEstado" style="font-size:12px;color:#5a7a82"></span>
         <button class="btn-secondary" onclick="openEscenariosModal()">📂 Escenarios</button>
         <button class="btn-primary" onclick="openGuardarModal()">💾 Guardar escenario</button>
+        <button class="btn-secondary" id="btnUndo" onclick="deshacer()" title="Deshacer el último cambio del escenario (Ctrl+Z)" disabled>↶ Deshacer</button>
+        <button class="btn-secondary" id="btnRedo" onclick="rehacer()" title="Rehacer (Ctrl+Y)" disabled>↷ Rehacer</button>
         <button class="btn-secondary" onclick="resetEscenario()">↺ Reiniciar escenario</button>
         <button class="btn-secondary" onclick="addSalida()">－ Quitar Haptiqueño</button>
         <button class="btn-secondary" onclick="openVacanteModal()">＋ Vacante</button>
@@ -1151,7 +1153,64 @@ function confirmProyecto() {
 }
 
 // ── Render ──────────────────────────────────────────────────────────────────
+// ── Deshacer / rehacer ──────────────────────────────────────────────────────
+// Se registra solo: en cada render se compara el escenario con el anterior y, si cambió, el
+// estado previo pasa a la pila. Los cambios seguidos en menos de ~0.8 s (p. ej. escribir un
+// nombre) se funden en un solo paso.
+let undoStack = [], redoStack = [], ultimoEstadoJSON = null, ultimoCambioT = 0, aplicandoHistorial = false;
+const UNDO_MAX = 60;
+function registrarHistorial() {
+  const now = JSON.stringify(snapshotEscenario());
+  if (ultimoEstadoJSON === null) { ultimoEstadoJSON = now; return; }
+  if (now === ultimoEstadoJSON || aplicandoHistorial) { if (aplicandoHistorial) ultimoEstadoJSON = now; return; }
+  const t = Date.now();
+  if (t - ultimoCambioT > 800 || !undoStack.length) {
+    undoStack.push(ultimoEstadoJSON);
+    if (undoStack.length > UNDO_MAX) undoStack.shift();
+  }
+  ultimoCambioT = t;
+  redoStack = [];
+  ultimoEstadoJSON = now;
+}
+function actualizarBotonesHistorial() {
+  const u = document.getElementById('btnUndo'), r = document.getElementById('btnRedo');
+  if (u) u.disabled = !undoStack.length;
+  if (r) r.disabled = !redoStack.length;
+}
+function aplicarDesdeHistorial(json) {
+  aplicandoHistorial = true;
+  try {
+    aplicarEscenario(JSON.parse(json));
+    renderEscenario();
+    renderAllKeepScroll();
+  } finally { aplicandoHistorial = false; }
+}
+function deshacer() {
+  if (!undoStack.length) return;
+  redoStack.push(ultimoEstadoJSON);
+  const prev = undoStack.pop();
+  aplicarDesdeHistorial(prev);
+  actualizarBotonesHistorial();
+}
+function rehacer() {
+  if (!redoStack.length) return;
+  undoStack.push(ultimoEstadoJSON);
+  const next = redoStack.pop();
+  aplicarDesdeHistorial(next);
+  actualizarBotonesHistorial();
+}
+document.addEventListener('keydown', e => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  const tag = (e.target && e.target.tagName) || '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return; // no se roba el Ctrl+Z al escribir
+  const k = e.key.toLowerCase();
+  if (k === 'z' && !e.shiftKey) { e.preventDefault(); deshacer(); }
+  else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); rehacer(); }
+});
+
 function renderAll() {
+  registrarHistorial();
+  actualizarBotonesHistorial();
   demEf = buildDemEf();
   const weekly = computeWeekly();
   renderHorizontes(weekly);
