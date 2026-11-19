@@ -669,12 +669,24 @@ function renderEscenario() {
     </div>`).join('');
 
   document.getElementById('secProyectos').style.display = proyectosSim.length ? 'block' : 'none';
+  const demAct = buildDemEf(); // demanda vigente (con asignaciones) para calcular el impacto de cada opción
   document.getElementById('proyectosList').innerHTML = proyectosSim.map(pr => `
     <div class="hire-row">
       <span class="scn-item">${pr.codigo}${pr.cliente ? ' · ' + pr.cliente : ''}</span>
       <span class="scn-meta">${fmt(pr.total)} h en ${pr.semanas} sem. desde ${pr.startKey.replace('-', ' sem ')}</span>
       <button class="btn-remove" onclick="removeProyectoSim(${pr.id})">✕ Quitar</button>
-    </div>`).join('');
+    </div>
+    ${Object.entries(pr.horasPorRol || {}).map(([rol, tot], i) => {
+      const hSem = Math.round((tot / pr.keys.size) * 10) / 10;
+      const inpId = `asg-${pr.id}-${i}`;
+      return `<div class="hire-row" style="margin-left:22px">
+        <span class="scn-meta"><b>${rol}</b> · ${fmt(hSem)} h/sem por asignar</span>
+        <input type="number" id="${inpId}" value="${hSem}" min="0.1" max="${hSem}" step="0.5" style="width:72px" title="Horas por semana a asignar a esta persona (puedes repartir el rol entre varias)" /> h/sem
+        <select onchange="asignarRolProyecto(${pr.id}, '${escAttr(rol)}', this.value, document.getElementById('${inpId}').value)">
+          <option value="">Asignar a… (carga antes → después)</option>${opcionesAsignar(pr, rol, demAct)}
+        </select>
+      </div>`;
+    }).join('')}`).join('');
 
   document.getElementById('hiresCard').style.display = (hires.length || salidas.length || proyectosSim.length || vacantes.length) ? 'block' : 'none';
 }
@@ -1035,6 +1047,63 @@ function addSalida() {
 function removeSalida(id) { salidas = salidas.filter(s => s.id !== id); renderEscenario(); renderAll(); }
 function onSalidaPersona(id, v) { const s = salidas.find(x => x.id === id); if (s) { s.persona = v; renderEscenario(); renderAll(); } }
 function onSalidaStart(id, v) { const s = salidas.find(x => x.id === id); if (s) { s.startKey = v; renderAll(); } }
+
+// Opciones de asignación de un rol de proyecto nuevo, con el impacto en la carga ponderada
+// de cada persona y las horas residuales que dejaría (bajo el mínimo de bloque de su rol).
+// Lee los inputs de h/sem al momento de elegir, así que el impacto mostrado es el del bloque completo.
+function opcionesAsignar(pr, rol, dem) {
+  const obj = targetFraction();
+  const keys = [...pr.keys].filter(k => !esSemanaOff(k));
+  if (!keys.length) return '';
+  const hSem = pr.horasPorRol[rol] / pr.keys.size;
+  const tot = (key, k) => Object.values(dem[key] || {}).reduce((s, m) => s + (m[k] || 0), 0);
+  const lastMonday = Math.max(...[...pr.keys].map(k => (weekRange.find(w => w.key === k) || { monday: 0 }).monday));
+  const cands = [
+    ...personasActivas.filter(x => activaEn(x, lastMonday)).map(x => ({ key: x, nombre: x })),
+    ...hires.map(h => ({ key: hireKey(h), nombre: h.nombre + ' (nuevo)' })),
+  ].filter(c => capOf(c.key) > 0).map(c => {
+    const cap = capOf(c.key) * HORAS_SEMANA;
+    const antes = keys.reduce((s, k) => s + tot(c.key, k), 0) / keys.length / cap;
+    const despues = antes + hSem / cap;
+    const minB = minBloque(rolDe(c.key));
+    const resid = keys.reduce((s, k) => {
+      const libre = cap * obj - (tot(c.key, k) + hSem);
+      return s + (libre > 0 && libre < minB ? libre : 0);
+    }, 0) / keys.length;
+    return { ...c, antes, despues, resid, mismoRol: rolDe(c.key) === rol };
+  }).sort((a, b) => (b.mismoRol - a.mismoRol) || (a.despues - b.despues));
+  return cands.map(c => {
+    const alerta = c.despues > 1 ? ' ⛔ sobre capacidad' : c.despues > obj ? ' ⚠ sobre objetivo' : '';
+    const res = c.resid > 0.05 ? ` · residual ${fmt(c.resid)} h/sem` : '';
+    return `<option value="${escAttr(c.key)}">${c.mismoRol ? '★ ' : ''}${c.nombre} [${rolDe(c.key)}] ${Math.round(c.antes * 100)}% → ${Math.round(c.despues * 100)}%${res}${alerta}</option>`;
+  }).join('');
+}
+
+// Asigna (parte de) un rol de un proyecto nuevo a una persona: esas horas pasan a su demanda
+// y dejan de estar "sin asignar". Se puede repartir un mismo rol entre varias personas.
+function asignarRolProyecto(prId, rol, personaKey, horasStr) {
+  if (!personaKey) return;
+  const pr = proyectosSim.find(x => x.id === prId);
+  if (!pr || !pr.horasPorRol || !pr.horasPorRol[rol]) return;
+  const porSem = pr.horasPorRol[rol] / pr.keys.size;
+  let h = Math.round((Number(horasStr) || porSem) * 10) / 10;
+  h = Math.min(h, porSem);
+  if (h <= 0) return;
+  const demAct = buildDemEf();
+  if (!ajustes[personaKey]) ajustes[personaKey] = {};
+  if (!ajustes[personaKey][pr.codigo]) ajustes[personaKey][pr.codigo] = {};
+  pr.keys.forEach(k => {
+    const actual = (demAct[personaKey] && demAct[personaKey][pr.codigo] && demAct[personaKey][pr.codigo][k]) || 0;
+    ajustes[personaKey][pr.codigo][k] = Math.round((actual + h) * 10) / 10;
+  });
+  const restante = (porSem - h) * pr.keys.size;
+  if (restante > 0.05) pr.horasPorRol[rol] = restante; else delete pr.horasPorRol[rol];
+  pr.total = Object.values(pr.horasPorRol).reduce((s, v) => s + v, 0);
+  pr.horasSemana = pr.total / pr.keys.size;
+  if (pr.total <= 0.05) proyectosSim = proyectosSim.filter(x => x.id !== prId); // todo asignado
+  renderEscenario();
+  renderAll();
+}
 
 function removeProyectoSim(id) { proyectosSim = proyectosSim.filter(x => x.id !== id); renderEscenario(); renderAll(); }
 
